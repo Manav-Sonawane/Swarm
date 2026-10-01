@@ -22,21 +22,28 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenPitchDeck,
 }) => {
   return (
-    <header className="w-full bg-[#0b0f19]/90 border-b border-slate-800/80 px-6 py-3 flex flex-wrap items-center justify-between gap-4 backdrop-blur-md sticky top-0 z-40">
+    <header className="w-full glass-heavy border-b border-white/10 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-40 shadow-glass-md">
+      {/* Top subtle sheen */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+
       {/* Left Branding */}
-      <div className="flex items-center space-x-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 ring-1 ring-emerald-400/40">
-          <Truck className="w-5 h-5 text-black font-bold" />
+      <div className="flex items-center space-x-3.5">
+        <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 via-purple-500 to-cyan-400 p-[1.5px] shadow-[0_0_20px_rgba(124,58,237,0.35)]">
+          <div className="w-full h-full bg-[#08070D] rounded-[14px] flex items-center justify-center">
+            <Truck className="w-5 h-5 text-lavender-300 font-bold" />
+          </div>
         </div>
         <div>
           <div className="flex items-center space-x-2">
-            <h1 className="text-xl font-black tracking-tight text-white font-mono">SWARM</h1>
-            <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            <h1 className="text-xl font-black tracking-tight text-white font-mono bg-gradient-to-r from-white via-slate-100 to-lavender-300 bg-clip-text text-transparent">
+              SWARM
+            </h1>
+            <span className="text-[10px] font-semibold font-mono tracking-wider px-2 py-0.5 rounded-full bg-violet-500/15 text-lavender-300 border border-violet-500/30 shadow-[0_0_10px_rgba(124,58,237,0.2)]">
               SIMULATOR 4.0
             </span>
           </div>
           <p className="text-xs text-slate-400">
-            Mumbai Last-Mile Allocation Engine & Live Digital Twin
+            Mumbai Last-Mile Allocation Engine &amp; Live Digital Twin
           </p>
         </div>
       </div>
@@ -44,11 +51,11 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Center Clock & Scenario Status */}
       <div className="flex items-center space-x-4">
         {/* Digital Clock */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-lg px-4 py-1.5 flex items-center space-x-2">
-          <Activity className="w-4 h-4 text-emerald-400 animate-pulse" />
+        <div className="glass-light border border-white/10 rounded-xl px-4 py-1.5 flex items-center space-x-2.5 shadow-glass-sm">
+          <Activity className="w-4 h-4 text-cyan-accent animate-pulse" />
           <div className="text-right">
-            <span className="text-[10px] uppercase text-slate-500 font-mono block leading-none">Sim Time</span>
-            <span className="text-lg font-bold font-mono text-emerald-400 leading-none">
+            <span className="text-[9px] uppercase tracking-wider text-slate-400 font-mono block leading-none">Sim Time</span>
+            <span className="text-lg font-bold font-mono text-white leading-none">
               {formatSimTime(simTime)}
             </span>
           </div>
@@ -56,20 +63,20 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Seed & Scenario Indicators */}
         <div className="flex items-center space-x-2">
-          <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-slate-900 border border-slate-800 text-slate-300">
-            Seed: <strong className="text-amber-400">{seed}</strong>
+          <span className="text-xs font-mono px-3 py-1 rounded-xl glass-light border border-white/10 text-slate-300">
+            Seed: <strong className="text-lavender-300">{seed}</strong>
           </span>
 
           {weatherMult < 1.0 && (
-            <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-sky-950/80 border border-sky-600/40 text-sky-300 flex items-center space-x-1.5 animate-pulse">
-              <CloudRain className="w-3.5 h-3.5 text-sky-400" />
+            <span className="text-xs font-medium px-3 py-1 rounded-xl bg-sky-950/60 border border-sky-400/30 text-sky-200 flex items-center space-x-1.5 shadow-[0_0_15px_rgba(56,189,248,0.2)] animate-pulse">
+              <CloudRain className="w-3.5 h-3.5 text-sky-300" />
               <span>Monsoon (ETAs +50%)</span>
             </span>
           )}
 
           {activeScenario === 'spike' && (
-            <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-amber-950/80 border border-amber-600/40 text-amber-300 flex items-center space-x-1.5 animate-pulse">
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-xs font-medium px-3 py-1 rounded-xl bg-amber-950/60 border border-amber-400/30 text-amber-200 flex items-center space-x-1.5 shadow-[0_0_15px_rgba(251,191,36,0.2)] animate-pulse">
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
               <span>IPL Spike (3x Rate)</span>
             </span>
           )}
@@ -79,10 +86,10 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Right Controls */}
       <div className="flex items-center space-x-3">
         {/* Server Connection Pill */}
-        <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800">
+        <div className="flex items-center space-x-2 px-3 py-1 rounded-full glass-light border border-white/10">
           <div
             className={`w-2 h-2 rounded-full ${
-              connected ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-red-500 shadow-[0_0_8px_#ef4444]'
+              connected ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-rose-500 shadow-[0_0_10px_#f43f5e]'
             }`}
           />
           <span className="text-xs font-medium text-slate-300">
@@ -93,18 +100,18 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Pitch Deck Trigger */}
         <button
           onClick={onOpenPitchDeck}
-          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 font-semibold text-xs flex items-center space-x-1.5 transition-all active:scale-95"
+          className="px-3.5 py-1.5 rounded-xl glass-light hover:glass-medium text-slate-200 hover:text-white border border-white/15 hover:border-violet-400/40 font-semibold text-xs flex items-center space-x-1.5 transition-all duration-300 active:scale-95 shadow-glass-sm hover:shadow-[0_0_20px_rgba(124,58,237,0.25)]"
         >
-          <Presentation className="w-4 h-4 text-emerald-400" />
+          <Presentation className="w-4 h-4 text-cyan-accent" />
           <span>Pitch Deck (6 Slides)</span>
         </button>
 
         {/* Scoreboard Trigger */}
         <button
           onClick={onOpenScoreboard}
-          className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-900 font-semibold text-xs flex items-center space-x-1.5 shadow-md shadow-emerald-600/20 transition-all active:scale-95"
+          className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-semibold text-xs flex items-center space-x-1.5 shadow-[0_0_20px_rgba(124,58,237,0.4)] border border-violet-400/30 transition-all duration-300 active:scale-95"
         >
-          <Award className="w-4 h-4 text-black font-black" />
+          <Award className="w-4 h-4 text-lavender-200" />
           <span>Final Scoreboard</span>
         </button>
       </div>

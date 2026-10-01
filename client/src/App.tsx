@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { socket } from './socket';
 import { TickPayload, EventPayload, ScenarioName, OrderSnapshot } from './types';
 import { getMockTickPayload } from './mock/mockStream';
@@ -86,7 +86,15 @@ const App: React.FC = () => {
     : null;
 
   return (
-    <div className="intelligence-root min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
+    <div className="intelligence-root min-h-screen relative overflow-x-hidden bg-[#050507] text-slate-100 font-sans selection:bg-violet-600/30 selection:text-white">
+      {/* Atmospheric Background Lights */}
+      <div className="fixed inset-0 pointer-events-none -z-10">
+        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] rounded-full bg-violet-900/15 blur-[140px]" />
+        <div className="absolute top-1/3 right-1/4 w-[500px] h-[500px] rounded-full bg-purple-900/10 blur-[130px]" />
+        <div className="absolute bottom-10 left-1/3 w-[600px] h-[600px] rounded-full bg-[#180B2E]/25 blur-[150px]" />
+        <div className="absolute inset-0 bg-radial-deep from-transparent via-[#050507]/40 to-[#050507]" />
+      </div>
+
       <Header
         connected={connected}
         simTime={tickData.simTime}
@@ -97,7 +105,7 @@ const App: React.FC = () => {
         onOpenPitchDeck={() => setPitchDeckOpen(true)}
       />
 
-      <main className="flex-1 max-w-[1700px] w-full mx-auto p-4 space-y-4">
+      <main className="relative z-10 flex-1 max-w-[1700px] w-full mx-auto p-4 sm:p-6 space-y-5">
         <SimControls
           running={tickData.running}
           speed={tickData.speed}
@@ -111,53 +119,55 @@ const App: React.FC = () => {
         />
 
         {/* Map Layout Toolbar & Large Map View */}
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 border border-slate-800/80 px-4 py-2 rounded-xl">
-            <div className="flex items-center space-x-2">
-              <MapIcon className="w-4 h-4 text-emerald-400" />
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 glass-medium px-5 py-3 rounded-2xl border border-white/10 shadow-glass-sm">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-6 h-6 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                <MapIcon className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
               <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">
                 Live Mumbai Digital Twin Maps (3 Deliverable Approaches)
               </span>
             </div>
 
-            <div className="flex items-center space-x-2 flex-wrap gap-1">
-              <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px] font-mono">
+            <div className="flex items-center space-x-2 flex-wrap gap-1.5">
+              <div className="flex bg-black/40 p-1 rounded-xl border border-white/10 text-[11px] font-mono">
                 <button
                   onClick={() => setMapLayout('dual_baseline')}
-                  className={`px-3 py-1 rounded transition-all ${
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
                     mapLayout === 'dual_baseline'
-                      ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white font-bold shadow-[0_0_12px_rgba(139,92,246,0.5)] border border-violet-400/40'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
                   }`}
                 >
                   Baseline vs Swarm
                 </button>
                 <button
                   onClick={() => setMapLayout('3way')}
-                  className={`px-3 py-1 rounded transition-all ${
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
                     mapLayout === '3way'
-                      ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white font-bold shadow-[0_0_12px_rgba(139,92,246,0.5)] border border-violet-400/40'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
                   }`}
                 >
                   3-Way Grid
                 </button>
                 <button
                   onClick={() => setMapLayout('dual_naive')}
-                  className={`px-3 py-1 rounded transition-all ${
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
                     mapLayout === 'dual_naive'
-                      ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white font-bold shadow-[0_0_12px_rgba(139,92,246,0.5)] border border-violet-400/40'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
                   }`}
                 >
                   Naive vs Swarm
                 </button>
                 <button
                   onClick={() => setMapLayout('single')}
-                  className={`px-3 py-1 rounded transition-all ${
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
                     mapLayout === 'single'
-                      ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white font-bold shadow-[0_0_12px_rgba(139,92,246,0.5)] border border-violet-400/40'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
                   }`}
                 >
                   Focus View

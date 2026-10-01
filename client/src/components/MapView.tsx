@@ -74,18 +74,18 @@ export const MapView: React.FC<MapViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-xl dark-map">
+    <div className="flex flex-col h-full glass-medium border border-white/10 rounded-2xl overflow-hidden shadow-glass-md dark-map transition-all duration-300">
       {/* Map Header */}
-      <div className="bg-slate-950 px-4 py-2.5 border-b border-slate-800/80 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
+      <div className="glass-light px-5 py-3 border-b border-white/10 flex items-center justify-between">
+        <div className="flex items-center space-x-2.5">
           <h2 className="font-mono text-sm font-bold text-white tracking-wide">{title}</h2>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${badgeColor}`}>
+          <span className={`text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full border uppercase tracking-wider shadow-sm ${badgeColor}`}>
             {badge}
           </span>
         </div>
-        <div className="flex items-center space-x-3 text-[11px] text-slate-400">
-          <span>Riders: <strong className="text-white">{worldData.riders.length}</strong></span>
-          <span>Orders: <strong className="text-white">{worldData.orders.length}</strong></span>
+        <div className="flex items-center space-x-3 text-[11px] text-slate-300 font-mono">
+          <span>Riders: <strong className="text-white font-bold">{worldData.riders.length}</strong></span>
+          <span>Orders: <strong className="text-white font-bold">{worldData.orders.length}</strong></span>
         </div>
       </div>
 

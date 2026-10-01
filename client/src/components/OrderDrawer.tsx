@@ -42,39 +42,39 @@ export const OrderDrawer: React.FC<OrderDrawerProps> = ({ order, world, onClose 
     : 'bg-slate-800 text-slate-300 border-slate-700';
 
   return (
-    <div className="fixed inset-y-0 right-0 w-full max-w-md bg-slate-900/95 border-l border-slate-800 shadow-2xl backdrop-blur-xl z-50 flex flex-col">
+    <div className="fixed inset-y-0 right-0 w-full max-w-md glass-heavy border-l border-white/15 shadow-[0_0_50px_rgba(0,0,0,0.8)] z-50 flex flex-col transition-all duration-300">
       {/* Header */}
-      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80 shrink-0">
+      <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between glass-light shrink-0">
         <div>
           <div className="flex items-center flex-wrap gap-2">
             <h2 className="text-base font-bold font-mono text-white">{order.id}</h2>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${classBadge}`}>
+            <span className={`text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full border uppercase ${classBadge}`}>
               {order.class ?? order.priority}
             </span>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${STATUS_COLOR[order.status] ?? 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+            <span className={`text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full border uppercase ${STATUS_COLOR[order.status] ?? 'bg-white/10 text-slate-300 border-white/10'}`}>
               {order.status}
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            World: <strong className={`uppercase font-mono ${world === 'swarm' ? 'text-emerald-400' : 'text-slate-300'}`}>{world}</strong>
+          <p className="text-xs text-slate-400 mt-1">
+            World: <strong className={`uppercase font-mono ${world === 'swarm' ? 'text-cyan-accent' : 'text-slate-300'}`}>{world}</strong>
           </p>
         </div>
-        <button id="order-drawer-close" onClick={onClose} className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all">
+        <button id="order-drawer-close" onClick={onClose} className="p-2 rounded-xl glass-light text-slate-400 hover:text-white hover:border-white/20 transition-all">
           <X className="w-5 h-5" />
         </button>
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs font-sans">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs font-sans">
 
         {/* Delivery window */}
-        <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 flex items-center justify-between">
-          <div className="space-y-0.5">
-            <span className="text-[10px] text-slate-500 uppercase font-mono">Delivery Window</span>
+        <div className="glass-light border border-white/10 rounded-xl p-4 flex items-center justify-between shadow-glass-sm">
+          <div className="space-y-1">
+            <span className="text-[10px] text-slate-400 uppercase font-mono">Delivery Window</span>
             <div className="font-mono text-slate-300">Created: {formatSimTime(order.createdAt)}</div>
             <div className="font-mono text-slate-300">Promised: <strong className="text-white">{formatSimTime(order.promisedBy)}</strong></div>
             {order.projectedEta != null && (
-              <div className={`font-mono ${order.projectedEta > order.promisedBy ? 'text-rose-400' : 'text-emerald-400'}`}>
+              <div className={`font-mono ${order.projectedEta > order.promisedBy ? 'text-rose-400' : 'text-cyan-accent'}`}>
                 ETA: {formatSimTime(order.projectedEta)}{' '}
                 ({order.projectedEta > order.promisedBy
                   ? `+${Math.round(order.projectedEta - order.promisedBy)}s late`
@@ -82,15 +82,15 @@ export const OrderDrawer: React.FC<OrderDrawerProps> = ({ order, world, onClose 
               </div>
             )}
             {order.deliveredAt != null && (
-              <div className="font-mono text-emerald-400">Delivered: {formatSimTime(order.deliveredAt)}</div>
+              <div className="font-mono text-cyan-accent">Delivered: {formatSimTime(order.deliveredAt)}</div>
             )}
           </div>
           {order.isLate ? (
-            <span className="flex items-center space-x-1 px-2.5 py-1 rounded bg-rose-950/80 border border-rose-600/40 text-rose-300 font-bold">
+            <span className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-rose-950/70 border border-rose-500/40 text-rose-300 font-bold shadow-[0_0_12px_rgba(244,63,94,0.3)]">
               <AlertTriangle className="w-3.5 h-3.5" /><span>At Risk</span>
             </span>
           ) : (
-            <span className="flex items-center space-x-1 px-2.5 py-1 rounded bg-emerald-950/80 border border-emerald-600/40 text-emerald-300 font-bold">
+            <span className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 font-bold shadow-[0_0_12px_rgba(6,182,212,0.3)]">
               <CheckCircle className="w-3.5 h-3.5" /><span>On Time</span>
             </span>
           )}
@@ -103,11 +103,11 @@ export const OrderDrawer: React.FC<OrderDrawerProps> = ({ order, world, onClose 
           <div className="space-y-4">
 
             {/* Rationale */}
-            <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-lg p-3">
-              <div className="flex items-center space-x-1.5 text-xs font-bold text-emerald-400 mb-1.5">
+            <div className="glass-light border border-cyan-500/30 rounded-xl p-4 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+              <div className="flex items-center space-x-2 text-xs font-bold text-cyan-accent mb-2">
                 <Zap className="w-4 h-4" /><span>Decision Rationale</span>
               </div>
-              <p className="text-xs leading-relaxed text-emerald-200/90 font-mono">"{decision.reason}"</p>
+              <p className="text-xs leading-relaxed text-cyan-100 font-mono">"{decision.reason}"</p>
             </div>
 
             {/* Meta badges */}

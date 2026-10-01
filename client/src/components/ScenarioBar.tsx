@@ -78,42 +78,42 @@ export const ScenarioBar: React.FC<ScenarioBarProps> = ({
   ];
 
   return (
-    <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3 shadow-lg">
-      <div className="flex items-center justify-between mb-2">
+    <div className="glass-medium border border-white/10 rounded-2xl p-4 shadow-glass-md transition-all duration-300">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2">
           <ShieldAlert className="w-4 h-4 text-amber-400" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-300 font-mono">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-200 font-mono">
             Live Scenario Stress-Test Suite
           </span>
           {activeScenario && activeScenario !== 'normal' && (
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+            <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40 shadow-[0_0_12px_rgba(245,158,11,0.3)] animate-pulse">
               Active: {activeScenario.toUpperCase()}
             </span>
           )}
         </div>
-        <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">
+        <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
           Seeded multi-world synchronized injection
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
         {scenarios.map((sc) => {
           const isActive = activeScenario === sc.id || (sc.id === 'clear' && activeScenario === 'normal');
           return (
             <button
               key={sc.id}
               onClick={() => onTriggerScenario(sc.id)}
-              className={`p-2.5 rounded-lg border text-left transition-all active:scale-95 flex flex-col justify-between ${
+              className={`p-3 rounded-xl border text-left transition-all duration-300 active:scale-95 flex flex-col justify-between group ${
                 isActive
-                  ? sc.activeColor + ' shadow-md'
-                  : 'bg-slate-950/60 border-slate-800/80 ' + sc.color
+                  ? 'bg-gradient-to-br from-violet-900/60 via-purple-900/40 to-slate-900/80 border-violet-400/60 text-white ring-1 ring-violet-400/40 shadow-[0_0_20px_rgba(124,58,237,0.35)]'
+                  : 'glass-light border-white/10 text-slate-300 hover:text-white hover:border-violet-400/30 hover:shadow-[0_0_15px_rgba(124,58,237,0.2)] hover:-translate-y-0.5'
               }`}
             >
-              <div className="flex items-center space-x-1.5 mb-1">
-                {sc.icon}
+              <div className="flex items-center space-x-2 mb-1.5">
+                <span className="transition-transform duration-300 group-hover:scale-110">{sc.icon}</span>
                 <span className="text-xs font-bold font-mono truncate">{sc.label}</span>
               </div>
-              <span className="text-[10px] text-slate-400 font-sans leading-tight line-clamp-1">
+              <span className="text-[10px] text-slate-400 group-hover:text-lavender-200/80 font-sans leading-tight line-clamp-1">
                 {sc.desc}
               </span>
             </button>

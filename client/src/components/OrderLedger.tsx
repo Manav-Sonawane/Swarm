@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   CheckCircle2, XCircle, Clock, Package, Bike, Store,
   ChevronDown, ChevronUp, Search, Filter, AlertTriangle, Sparkles,
@@ -115,19 +115,19 @@ export const OrderLedger: React.FC<OrderLedgerProps> = ({
   const swarmDeliveredCount = swarmOrders.filter(o => o.status === 'delivered').length;
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl overflow-hidden flex flex-col">
+    <div className="glass-medium border border-white/10 rounded-2xl shadow-glass-md overflow-hidden flex flex-col transition-all duration-300">
       {/* Ledger Header */}
-      <div className="p-4 border-b border-slate-800 bg-slate-950/80 flex flex-wrap items-center justify-between gap-3">
+      <div className="p-4 sm:p-5 border-b border-white/10 glass-light flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
-            <ShoppingBag className="w-4 h-4 text-emerald-400" />
+          <div className="w-9 h-9 rounded-xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center shadow-[0_0_12px_rgba(124,58,237,0.3)]">
+            <ShoppingBag className="w-4 h-4 text-lavender-300" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
               <h2 className="text-sm font-black font-mono text-white uppercase tracking-wider">
-                Live Order Ledger & Delivery Ticker (3 Approaches)
+                Live Order Ledger &amp; Delivery Ticker (3 Approaches)
               </h2>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-white/[0.06] text-lavender-200 border border-white/10">
                 {filteredOrderIds.length} orders
               </span>
             </div>
@@ -140,27 +140,27 @@ export const OrderLedger: React.FC<OrderLedgerProps> = ({
         {/* View mode toggle, filters, and search */}
         <div className="flex items-center space-x-2 flex-wrap gap-2">
           {/* View Mode Selector */}
-          <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[10px] font-mono">
+          <div className="flex bg-black/40 p-1 rounded-xl border border-white/10 text-[10px] font-mono">
             <button
               onClick={() => setViewMode('3way')}
-              className={`px-2.5 py-1 rounded transition-all ${
-                viewMode === '3way' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold' : 'text-slate-400 hover:text-slate-200'
+              className={`px-3 py-1 rounded-lg transition-all ${
+                viewMode === '3way' ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white font-bold shadow-[0_0_10px_rgba(139,92,246,0.4)] border border-violet-400/30' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               3-Way Grid
             </button>
             <button
               onClick={() => setViewMode('dual_baseline')}
-              className={`px-2.5 py-1 rounded transition-all ${
-                viewMode === 'dual_baseline' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold' : 'text-slate-400 hover:text-slate-200'
+              className={`px-3 py-1 rounded-lg transition-all ${
+                viewMode === 'dual_baseline' ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white font-bold shadow-[0_0_10px_rgba(139,92,246,0.4)] border border-violet-400/30' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               Baseline vs Swarm
             </button>
             <button
               onClick={() => setViewMode('dual_naive')}
-              className={`px-2.5 py-1 rounded transition-all ${
-                viewMode === 'dual_naive' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold' : 'text-slate-400 hover:text-slate-200'
+              className={`px-3 py-1 rounded-lg transition-all ${
+                viewMode === 'dual_naive' ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white font-bold shadow-[0_0_10px_rgba(139,92,246,0.4)] border border-violet-400/30' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               Naive vs Swarm
@@ -169,46 +169,46 @@ export const OrderLedger: React.FC<OrderLedgerProps> = ({
 
           {/* Search Box */}
           <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-lavender-400/70" />
             <input
               type="text"
               placeholder="Search customer / order..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1 text-xs bg-slate-900 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-all w-44"
+              className="pl-8 pr-3 py-1.5 text-xs bg-black/50 border border-white/10 rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:border-violet-400/50 transition-all w-48 shadow-inner"
             />
           </div>
 
           {/* Filter Pills */}
-          <div className="flex bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[10px] font-mono">
+          <div className="flex bg-black/40 p-1 rounded-xl border border-white/10 text-[10px] font-mono">
             <button
               onClick={() => setFilter('all')}
-              className={`px-2 py-1 rounded transition-all ${
-                filter === 'all' ? 'bg-slate-800 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                filter === 'all' ? 'bg-white/15 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               All
             </button>
             <button
               onClick={() => setFilter('active')}
-              className={`px-2 py-1 rounded transition-all ${
-                filter === 'active' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-slate-200'
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                filter === 'active' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.2)]' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               Active
             </button>
             <button
               onClick={() => setFilter('on_time')}
-              className={`px-2 py-1 rounded transition-all ${
-                filter === 'on_time' ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200'
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                filter === 'on_time' ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               On-Time ✓
             </button>
             <button
               onClick={() => setFilter('late')}
-              className={`px-2 py-1 rounded transition-all ${
-                filter === 'late' ? 'bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30' : 'text-slate-400 hover:text-slate-200'
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                filter === 'late' ? 'bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40 shadow-[0_0_10px_rgba(244,63,94,0.2)]' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               Late ❌

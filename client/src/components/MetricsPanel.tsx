@@ -173,43 +173,43 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({
   ];
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-xl space-y-4">
-      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+    <div className="glass-medium border border-white/10 rounded-2xl p-5 shadow-glass-md space-y-5 transition-all duration-300">
+      <div className="flex items-center justify-between border-b border-white/10 pb-3">
         <h3 className="font-mono text-sm font-bold text-white flex items-center space-x-2">
           <span>📊 3-Way Engine Scorecard (Naive vs Baseline vs Swarm)</span>
         </h3>
-        <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-600/40 px-2.5 py-0.5 rounded">
+        <span className="text-[11px] font-mono text-cyan-accent bg-cyan-950/60 border border-cyan-400/40 px-3 py-0.5 rounded-full shadow-[0_0_12px_rgba(103,232,249,0.2)]">
           Live Divergence Monitor
         </span>
       </div>
 
       {/* Metric Scorecards 3-Way Table */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {metricItems.map((item, idx) => (
           <div
             key={idx}
-            className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3 hover:border-slate-700 transition-all"
+            className="glass-light border border-white/10 rounded-xl p-3.5 hover:border-violet-400/30 hover:shadow-[0_0_15px_rgba(124,58,237,0.2)] transition-all duration-300 group hover:-translate-y-0.5"
           >
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
-              <span className="flex items-center space-x-1.5 font-medium truncate">
-                {item.icon}
+            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+              <span className="flex items-center space-x-2 font-medium truncate group-hover:text-slate-200">
+                <span className="transition-transform duration-200 group-hover:scale-110">{item.icon}</span>
                 <span className="truncate">{item.label}</span>
               </span>
               {item.delta}
             </div>
 
-            <div className="grid grid-cols-3 gap-1 mt-1 pt-1 border-t border-slate-800/50 text-center">
+            <div className="grid grid-cols-3 gap-1.5 mt-2 pt-2 border-t border-white/[0.08] text-center">
               <div>
-                <span className="text-[9px] text-slate-500 uppercase font-mono block">Naive</span>
-                <span className="text-xs font-semibold text-slate-400 font-mono">{item.naiveVal}</span>
+                <span className="text-[9px] text-slate-400 uppercase font-mono block">Naive</span>
+                <span className="text-xs font-semibold text-slate-300 font-mono">{item.naiveVal}</span>
               </div>
-              <div className="border-l border-r border-slate-800/80 px-1">
-                <span className="text-[9px] text-slate-400 uppercase font-mono block">Baseline</span>
-                <span className="text-xs font-bold text-slate-200 font-mono">{item.baseVal}</span>
+              <div className="border-l border-r border-white/10 px-1">
+                <span className="text-[9px] text-slate-300 uppercase font-mono block">Baseline</span>
+                <span className="text-xs font-bold text-slate-100 font-mono">{item.baseVal}</span>
               </div>
               <div>
-                <span className="text-[9px] text-emerald-400 uppercase font-mono block">Swarm ★</span>
-                <span className="text-xs font-black text-emerald-400 font-mono">{item.swarmVal}</span>
+                <span className="text-[9px] text-cyan-300 uppercase font-mono block font-bold">Swarm ★</span>
+                <span className="text-xs font-black text-cyan-300 font-mono drop-shadow-[0_0_8px_rgba(103,232,249,0.5)]">{item.swarmVal}</span>
               </div>
             </div>
           </div>
@@ -217,8 +217,8 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({
       </div>
 
       {/* Live Recharts Line Chart */}
-      <div className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3">
-        <h4 className="text-xs font-semibold text-slate-300 mb-2 font-mono flex items-center justify-between">
+      <div className="glass-light border border-white/10 rounded-xl p-4">
+        <h4 className="text-xs font-semibold text-slate-200 mb-3 font-mono flex items-center justify-between">
           <span>📈 On-Time Delivery % Over Sim Time (3 Approaches)</span>
           <div className="flex items-center space-x-3 text-[11px]">
             <span className="flex items-center space-x-1">
@@ -230,8 +230,8 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({
               <span className="text-slate-400">Baseline</span>
             </span>
             <span className="flex items-center space-x-1">
-              <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full inline-block" />
-              <span className="text-emerald-400 font-bold">Swarm ★</span>
+              <span className="w-2.5 h-2.5 bg-cyan-400 rounded-full inline-block shadow-[0_0_8px_#22d3ee]" />
+              <span className="text-cyan-300 font-bold">Swarm ★</span>
             </span>
           </div>
         </h4>
@@ -239,10 +239,10 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({
         <div className="h-44 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <XAxis dataKey="time" stroke="#64748b" fontSize={10} tickLine={false} />
-              <YAxis domain={[0, 100]} stroke="#64748b" fontSize={10} tickLine={false} />
+              <XAxis dataKey="time" stroke="#94a3b8" fontSize={10} tickLine={false} />
+              <YAxis domain={[0, 100]} stroke="#94a3b8" fontSize={10} tickLine={false} />
               <Tooltip
-                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '11px' }}
+                contentStyle={{ backgroundColor: '#090710', borderColor: 'rgba(255,255,255,0.15)', borderRadius: '12px', fontSize: '11px', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
               />
               <Line
                 type="monotone"
@@ -256,7 +256,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({
                 type="monotone"
                 dataKey="baselineOnTime"
                 name="Baseline On-Time %"
-                stroke="#ef4444"
+                stroke="#f43f5e"
                 strokeWidth={2}
                 dot={false}
               />
@@ -264,7 +264,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({
                 type="monotone"
                 dataKey="swarmOnTime"
                 name="Swarm On-Time %"
-                stroke="#10b981"
+                stroke="#22d3ee"
                 strokeWidth={2.5}
                 dot={false}
               />

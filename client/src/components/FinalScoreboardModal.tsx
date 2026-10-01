@@ -64,17 +64,20 @@ export const FinalScoreboardModal: React.FC<FinalScoreboardModalProps> = ({
     : '1.0';
 
   return (
-    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-3 md:p-6 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden my-auto">
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-2xl z-50 flex items-center justify-center p-3 md:p-6 overflow-y-auto">
+      <div className="glass-heavy border border-white/15 rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-[0_0_60px_rgba(0,0,0,0.8)] relative overflow-hidden my-auto">
         {/* Decorative Background Glow */}
-        <div className="absolute -top-20 -right-20 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -top-20 -right-20 w-64 h-64 bg-violet-600/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-cyan-400/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
 
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 p-4 md:px-6">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <Trophy className="w-5 h-5 text-black font-black" />
+        <div className="flex items-center justify-between border-b border-white/10 p-4 md:px-6 glass-light">
+          <div className="flex items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 to-cyan-400 p-[1.5px] shadow-[0_0_15px_rgba(124,58,237,0.4)]">
+              <div className="w-full h-full bg-[#08070D] rounded-[14px] flex items-center justify-center">
+                <Trophy className="w-5 h-5 text-lavender-300 font-black" />
+              </div>
             </div>
             <div>
               <h2 className="text-lg md:text-xl font-black font-mono text-white tracking-tight">
@@ -87,11 +90,11 @@ export const FinalScoreboardModal: React.FC<FinalScoreboardModalProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
-            <div className="flex bg-slate-950/80 p-0.5 rounded-lg border border-slate-800">
+            <div className="flex bg-black/40 p-1 rounded-xl border border-white/10">
               <button
                 onClick={() => setTab('deep')}
-                className={`px-3 py-1 rounded text-xs font-mono font-bold flex items-center space-x-1.5 transition-all ${
-                  tab === 'deep' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200'
+                className={`px-3 py-1 rounded-lg text-xs font-mono font-bold flex items-center space-x-1.5 transition-all ${
+                  tab === 'deep' ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-[0_0_10px_rgba(139,92,246,0.4)] border border-violet-400/30' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <BarChart3 className="w-3.5 h-3.5" />
@@ -99,8 +102,8 @@ export const FinalScoreboardModal: React.FC<FinalScoreboardModalProps> = ({
               </button>
               <button
                 onClick={() => setTab('summary')}
-                className={`px-3 py-1 rounded text-xs font-mono font-bold flex items-center space-x-1.5 transition-all ${
-                  tab === 'summary' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-slate-200'
+                className={`px-3 py-1 rounded-lg text-xs font-mono font-bold flex items-center space-x-1.5 transition-all ${
+                  tab === 'summary' ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-[0_0_10px_rgba(139,92,246,0.4)] border border-violet-400/30' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <LayoutDashboard className="w-3.5 h-3.5" />
@@ -110,7 +113,7 @@ export const FinalScoreboardModal: React.FC<FinalScoreboardModalProps> = ({
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all ml-2"
+              className="p-2 rounded-xl glass-light text-slate-400 hover:text-white hover:border-white/20 transition-all ml-2"
             >
               <X className="w-5 h-5" />
             </button>
@@ -128,26 +131,26 @@ export const FinalScoreboardModal: React.FC<FinalScoreboardModalProps> = ({
           ) : (
             <div className="space-y-6">
               {/* Headline Highlights */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="bg-gradient-to-br from-emerald-950/80 to-slate-900 border border-emerald-500/40 rounded-xl p-4 text-center">
-                  <span className="text-[10px] uppercase font-mono text-emerald-400 block mb-1">On-Time Rate Delta</span>
-                  <strong className={`text-2xl font-black font-mono ${onTimeImprovement >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                <div className="glass-light border border-violet-500/30 rounded-2xl p-4 text-center shadow-[0_0_20px_rgba(124,58,237,0.15)]">
+                  <span className="text-[10px] uppercase font-mono text-lavender-300 block mb-1">On-Time Rate Delta</span>
+                  <strong className={`text-2xl font-black font-mono ${onTimeImprovement >= 0 ? 'text-cyan-accent' : 'text-rose-400'}`}>
                     {onTimeImprovement >= 0 ? '+' : ''}{onTimeImprovement.toFixed(1)}%
                   </strong>
                   <span className="text-[11px] text-slate-400 block mt-1">Swarm vs Baseline</span>
                 </div>
 
-                <div className="bg-gradient-to-br from-teal-950/80 to-slate-900 border border-teal-500/40 rounded-xl p-4 text-center">
-                  <span className="text-[10px] uppercase font-mono text-teal-400 block mb-1">Avg Delivery Time</span>
-                  <strong className="text-2xl font-black text-teal-400 font-mono">
+                <div className="glass-light border border-cyan-500/30 rounded-2xl p-4 text-center shadow-[0_0_20px_rgba(6,182,212,0.15)]">
+                  <span className="text-[10px] uppercase font-mono text-cyan-accent block mb-1">Avg Delivery Time</span>
+                  <strong className="text-2xl font-black text-cyan-accent font-mono">
                     -{timeReductionPct}%
                   </strong>
                   <span className="text-[11px] text-slate-400 block mt-1">Faster fulfillment</span>
                 </div>
 
-                <div className="bg-gradient-to-br from-amber-950/80 to-slate-900 border border-amber-500/40 rounded-xl p-4 text-center">
-                  <span className="text-[10px] uppercase font-mono text-amber-400 block mb-1">Batch Efficiency</span>
-                  <strong className="text-2xl font-black text-amber-400 font-mono">
+                <div className="glass-light border border-amber-500/30 rounded-2xl p-4 text-center shadow-[0_0_20px_rgba(245,158,11,0.15)]">
+                  <span className="text-[10px] uppercase font-mono text-amber-300 block mb-1">Batch Efficiency</span>
+                  <strong className="text-2xl font-black text-amber-300 font-mono">
                     {batchingMultiplier}x
                   </strong>
                   <span className="text-[11px] text-slate-400 block mt-1">Orders carried per trip</span>
@@ -155,75 +158,75 @@ export const FinalScoreboardModal: React.FC<FinalScoreboardModalProps> = ({
               </div>
 
               {/* Detailed Metrics Table */}
-              <div className="bg-slate-950/80 border border-slate-800 rounded-xl overflow-hidden font-mono text-xs">
+              <div className="glass-light border border-white/10 rounded-2xl overflow-hidden font-mono text-xs shadow-glass-sm">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-900 text-slate-400 text-[11px] uppercase border-b border-slate-800">
-                      <th className="p-3">Performance Metric</th>
-                      <th className="p-3 text-slate-400">Naive (Single)</th>
-                      <th className="p-3 text-slate-300">Baseline (Greedy)</th>
-                      <th className="p-3 text-emerald-400">Swarm (Rolling) ★</th>
-                      <th className="p-3 text-right">Advantage</th>
+                    <tr className="bg-black/40 text-slate-400 text-[11px] uppercase border-b border-white/10">
+                      <th className="p-3.5">Performance Metric</th>
+                      <th className="p-3.5 text-slate-400">Naive (Single)</th>
+                      <th className="p-3.5 text-slate-300">Baseline (Greedy)</th>
+                      <th className="p-3.5 text-cyan-accent font-bold">Swarm (Rolling) ★</th>
+                      <th className="p-3.5 text-right">Advantage</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/80">
+                  <tbody className="divide-y divide-white/[0.06]">
                     <tr>
-                      <td className="p-3 flex items-center space-x-2 text-slate-200">
-                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                      <td className="p-3.5 flex items-center space-x-2 text-slate-200">
+                        <CheckCircle className="w-4 h-4 text-cyan-accent" />
                         <span>On-Time Fulfillment Rate</span>
                       </td>
-                      <td className="p-3 text-slate-400">{effectiveNaiveMetrics.onTimeRate}%</td>
-                      <td className="p-3 text-slate-300">{baselineMetrics.onTimeRate}%</td>
-                      <td className="p-3 font-bold text-emerald-400">{swarmMetrics.onTimeRate}%</td>
-                      <td className={`p-3 text-right font-bold ${onTimeImprovement >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      <td className="p-3.5 text-slate-400">{effectiveNaiveMetrics.onTimeRate}%</td>
+                      <td className="p-3.5 text-slate-300">{baselineMetrics.onTimeRate}%</td>
+                      <td className="p-3.5 font-bold text-cyan-accent">{swarmMetrics.onTimeRate}%</td>
+                      <td className={`p-3.5 text-right font-bold ${onTimeImprovement >= 0 ? 'text-cyan-accent' : 'text-rose-400'}`}>
                         {onTimeImprovement >= 0 ? '+' : ''}{onTimeImprovement.toFixed(1)}%
                       </td>
                     </tr>
                     <tr>
-                      <td className="p-3 flex items-center space-x-2 text-slate-200">
-                        <Clock className="w-4 h-4 text-sky-400" />
+                      <td className="p-3.5 flex items-center space-x-2 text-slate-200">
+                        <Clock className="w-4 h-4 text-lavender-300" />
                         <span>Mean Delivery Duration</span>
                       </td>
-                      <td className="p-3 text-slate-400">{formatDuration(effectiveNaiveMetrics.avgDeliverySec)}</td>
-                      <td className="p-3 text-slate-300">{formatDuration(baselineMetrics.avgDeliverySec)}</td>
-                      <td className="p-3 font-bold text-emerald-400">{formatDuration(swarmMetrics.avgDeliverySec)}</td>
-                      <td className="p-3 text-right font-bold text-teal-400">
+                      <td className="p-3.5 text-slate-400">{formatDuration(effectiveNaiveMetrics.avgDeliverySec)}</td>
+                      <td className="p-3.5 text-slate-300">{formatDuration(baselineMetrics.avgDeliverySec)}</td>
+                      <td className="p-3.5 font-bold text-cyan-accent">{formatDuration(swarmMetrics.avgDeliverySec)}</td>
+                      <td className="p-3.5 text-right font-bold text-cyan-300">
                         {formatDuration(timeReductionSec)} faster
                       </td>
                     </tr>
                     <tr>
-                      <td className="p-3 flex items-center space-x-2 text-slate-200">
-                        <Users className="w-4 h-4 text-teal-400" />
+                      <td className="p-3.5 flex items-center space-x-2 text-slate-200">
+                        <Users className="w-4 h-4 text-violet-300" />
                         <span>Trip Batching (Orders/Trip)</span>
                       </td>
-                      <td className="p-3 text-slate-400">{effectiveNaiveMetrics.ordersPerTrip}</td>
-                      <td className="p-3 text-slate-300">{baselineMetrics.ordersPerTrip}</td>
-                      <td className="p-3 font-bold text-emerald-400">{swarmMetrics.ordersPerTrip}</td>
-                      <td className="p-3 text-right font-bold text-emerald-400">
+                      <td className="p-3.5 text-slate-400">{effectiveNaiveMetrics.ordersPerTrip}</td>
+                      <td className="p-3.5 text-slate-300">{baselineMetrics.ordersPerTrip}</td>
+                      <td className="p-3.5 font-bold text-cyan-accent">{swarmMetrics.ordersPerTrip}</td>
+                      <td className="p-3.5 text-right font-bold text-cyan-accent">
                         {batchingMultiplier}x higher
                       </td>
                     </tr>
                     <tr>
-                      <td className="p-3 flex items-center space-x-2 text-slate-200">
-                        <Navigation className="w-4 h-4 text-amber-400" />
+                      <td className="p-3.5 flex items-center space-x-2 text-slate-200">
+                        <Navigation className="w-4 h-4 text-amber-300" />
                         <span>Distance per Order</span>
                       </td>
-                      <td className="p-3 text-slate-400">{effectiveNaiveMetrics.kmPerOrder} km</td>
-                      <td className="p-3 text-slate-300">{baselineMetrics.kmPerOrder} km</td>
-                      <td className="p-3 font-bold text-emerald-400">{swarmMetrics.kmPerOrder} km</td>
-                      <td className="p-3 text-right font-bold text-amber-400">
+                      <td className="p-3.5 text-slate-400">{effectiveNaiveMetrics.kmPerOrder} km</td>
+                      <td className="p-3.5 text-slate-300">{baselineMetrics.kmPerOrder} km</td>
+                      <td className="p-3.5 font-bold text-cyan-accent">{swarmMetrics.kmPerOrder} km</td>
+                      <td className="p-3.5 text-right font-bold text-amber-300">
                         {(baselineMetrics.kmPerOrder - swarmMetrics.kmPerOrder).toFixed(1)} km saved
                       </td>
                     </tr>
                     <tr>
-                      <td className="p-3 flex items-center space-x-2 text-slate-200">
-                        <Scale className="w-4 h-4 text-purple-400" />
+                      <td className="p-3.5 flex items-center space-x-2 text-slate-200">
+                        <Scale className="w-4 h-4 text-purple-300" />
                         <span>Rider Workload Fairness (Std Dev)</span>
                       </td>
-                      <td className="p-3 text-slate-400">{effectiveNaiveMetrics.fairnessStdDev}</td>
-                      <td className="p-3 text-slate-300">{baselineMetrics.fairnessStdDev}</td>
-                      <td className="p-3 font-bold text-emerald-400">{swarmMetrics.fairnessStdDev}</td>
-                      <td className="p-3 text-right font-bold text-purple-400">
+                      <td className="p-3.5 text-slate-400">{effectiveNaiveMetrics.fairnessStdDev}</td>
+                      <td className="p-3.5 text-slate-300">{baselineMetrics.fairnessStdDev}</td>
+                      <td className="p-3.5 font-bold text-cyan-accent">{swarmMetrics.fairnessStdDev}</td>
+                      <td className="p-3.5 text-right font-bold text-purple-300">
                         {baselineMetrics.fairnessStdDev > swarmMetrics.fairnessStdDev ? 'More Balanced' : baselineMetrics.fairnessStdDev < swarmMetrics.fairnessStdDev ? 'Less Balanced' : 'Equal'}
                       </td>
                     </tr>
@@ -235,13 +238,13 @@ export const FinalScoreboardModal: React.FC<FinalScoreboardModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex justify-between items-center p-4 border-t border-slate-800 bg-slate-950/60">
-          <span className="text-[11px] text-slate-500 font-mono">
+        <div className="flex justify-between items-center p-4 sm:px-6 border-t border-white/10 glass-light">
+          <span className="text-[11px] text-slate-400 font-mono">
             Swarm Real-Time Mumbai Logistics Digital Twin
           </span>
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-bold text-xs uppercase tracking-wider hover:opacity-90 transition-all shadow-lg active:scale-95"
+            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(124,58,237,0.4)] border border-violet-400/30 active:scale-95"
           >
             Close Scoreboard
           </button>

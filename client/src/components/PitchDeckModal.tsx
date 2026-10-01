@@ -308,22 +308,25 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
   const current = slides[currentSlide];
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-3 md:p-6 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden my-auto">
-        {/* Decorative Glow */}
-        <div className="absolute -top-24 -right-24 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-2xl z-50 flex items-center justify-center p-3 md:p-6 overflow-y-auto">
+      <div className="glass-heavy border border-white/15 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-[0_0_60px_rgba(0,0,0,0.8)] relative overflow-hidden my-auto">
+        {/* Decorative Atmospheric Glow */}
+        <div className="absolute -top-24 -right-24 w-80 h-80 bg-violet-600/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-cyan-400/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
 
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 p-4 md:px-6 bg-slate-950/60">
+        <div className="flex items-center justify-between border-b border-white/10 p-4 md:px-6 glass-light">
           <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <Presentation className="w-4 h-4 text-black font-black" />
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 to-cyan-400 p-[1.5px] shadow-[0_0_15px_rgba(124,58,237,0.4)]">
+              <div className="w-full h-full bg-[#08070D] rounded-[14px] flex items-center justify-center">
+                <Presentation className="w-4 h-4 text-lavender-300 font-black" />
+              </div>
             </div>
             <div>
               <h2 className="text-base font-black font-mono text-white tracking-tight flex items-center space-x-2">
                 <span>SWARM ARCHITECTURE PITCH DECK</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-violet-500/20 text-lavender-300 border border-violet-500/30">
                   6 Slides
                 </span>
               </h2>
@@ -333,10 +336,10 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
           <div className="flex items-center space-x-3">
             <button
               onClick={() => setShowNotes(!showNotes)}
-              className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold border transition-all ${
+              className={`px-3 py-1 rounded-xl text-xs font-mono font-semibold border transition-all ${
                 showNotes
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                  : 'glass-light text-slate-300 border-white/10 hover:text-white hover:border-white/20'
               }`}
             >
               {showNotes ? 'Hide Judge Notes' : 'Show Judge Notes'}
@@ -344,7 +347,7 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all"
+              className="p-2 rounded-xl glass-light text-slate-400 hover:text-white hover:border-white/20 transition-all"
             >
               <X className="w-5 h-5" />
             </button>
@@ -355,10 +358,10 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
         <div className="flex-1 p-6 md:p-8 flex flex-col justify-between overflow-y-auto min-h-[380px]">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded border uppercase tracking-wider ${current.badgeColor}`}>
+              <span className={`text-[10px] font-mono font-bold px-3 py-1 rounded-full border uppercase tracking-wider ${current.badgeColor}`}>
                 {current.badge}
               </span>
-              <span className="text-xs font-mono text-slate-500">
+              <span className="text-xs font-mono text-slate-400">
                 Slide {currentSlide + 1} of {slides.length}
               </span>
             </div>
@@ -376,7 +379,7 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
           </div>
 
           {showNotes && (
-            <div className="mt-4 p-3.5 bg-amber-950/40 border border-amber-500/40 rounded-xl text-xs font-sans text-amber-200 flex items-start space-x-2">
+            <div className="mt-4 p-4 glass-light border border-amber-500/30 rounded-2xl text-xs font-sans text-amber-200 flex items-start space-x-2.5 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
               <Lightbulb className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <strong className="font-mono text-amber-300 block mb-0.5">Judge Pitch Note:</strong>
@@ -387,14 +390,14 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
         </div>
 
         {/* Slide Navigation Footer */}
-        <div className="flex items-center justify-between p-4 border-t border-slate-800 bg-slate-950/80">
+        <div className="flex items-center justify-between p-4 sm:px-6 border-t border-white/10 glass-light">
           <button
             onClick={() => setCurrentSlide(prev => Math.max(0, prev - 1))}
             disabled={currentSlide === 0}
             className={`px-4 py-2 rounded-xl text-xs font-mono font-bold flex items-center space-x-1.5 transition-all ${
               currentSlide === 0
-                ? 'opacity-40 cursor-not-allowed text-slate-600 bg-slate-900'
-                : 'bg-slate-800 text-slate-200 hover:bg-slate-700 active:scale-95'
+                ? 'opacity-30 cursor-not-allowed text-slate-600 glass-light border-transparent'
+                : 'glass-light text-slate-200 hover:text-white hover:border-white/20 active:scale-95'
             }`}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -407,10 +410,10 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
               <button
                 key={idx}
                 onClick={() => setCurrentSlide(idx)}
-                className={`h-2 rounded-full transition-all ${
+                className={`h-2 rounded-full transition-all duration-300 ${
                   idx === currentSlide
-                    ? 'w-7 bg-emerald-400 shadow-md shadow-emerald-400/30'
-                    : 'w-2 bg-slate-700 hover:bg-slate-500'
+                    ? 'w-8 bg-gradient-to-r from-violet-500 to-cyan-300 shadow-[0_0_10px_rgba(139,92,246,0.6)]'
+                    : 'w-2 bg-white/15 hover:bg-white/30'
                 }`}
               />
             ))}
@@ -419,10 +422,10 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
           <button
             onClick={() => setCurrentSlide(prev => Math.min(slides.length - 1, prev + 1))}
             disabled={currentSlide === slides.length - 1}
-            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold flex items-center space-x-1.5 transition-all ${
+            className={`px-5 py-2 rounded-xl text-xs font-mono font-bold flex items-center space-x-1.5 transition-all ${
               currentSlide === slides.length - 1
-                ? 'opacity-40 cursor-not-allowed text-slate-600 bg-slate-900'
-                : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 hover:opacity-90 active:scale-95'
+                ? 'opacity-30 cursor-not-allowed text-slate-600 glass-light border-transparent'
+                : 'bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-[0_0_15px_rgba(124,58,237,0.4)] active:scale-95'
             }`}
           >
             <span>Next</span>

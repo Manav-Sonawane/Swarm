@@ -1,4 +1,4 @@
-﻿import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { EventPayload } from '../types';
 import { formatSimTime } from '../lib/format';
 import { Terminal, PackageCheck, Truck, AlertOctagon, CheckCircle2, XCircle, RefreshCcw, Zap, CloudRain, Package } from 'lucide-react';
@@ -59,45 +59,47 @@ export const EventLog: React.FC<EventLogProps> = ({ events }) => {
   }, [events.length]);
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 shadow-lg flex flex-col font-mono text-xs" style={{ height: '220px' }}>
+    <div className="glass-medium border border-white/10 rounded-2xl p-4 shadow-glass-md flex flex-col font-mono text-xs transition-all duration-300" style={{ height: '230px' }}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 shrink-0">
-        <div className="flex items-center space-x-2 text-slate-300">
-          <Terminal className="w-4 h-4 text-emerald-400" />
-          <span className="font-bold">Real-Time Event Feed</span>
-          <span className="text-[10px] font-mono text-emerald-500 bg-emerald-950/60 border border-emerald-600/30 px-1.5 py-0.5 rounded">LIVE</span>
+      <div className="flex items-center justify-between border-b border-white/10 pb-2.5 mb-2.5 shrink-0">
+        <div className="flex items-center space-x-2 text-slate-200">
+          <Terminal className="w-4 h-4 text-cyan-accent" />
+          <span className="font-bold tracking-tight">Real-Time Event Feed</span>
+          <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-400/30 px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.3)] animate-pulse">
+            LIVE
+          </span>
         </div>
-        <span className="text-[10px] text-slate-500">{events.length} events · newest first</span>
+        <span className="text-[10px] text-slate-400 font-mono">{events.length} events · newest first</span>
       </div>
 
       {/* Event list */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-1 pr-1">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-1.5 pr-1">
         {ordered.length === 0 ? (
-          <div className="text-slate-500 text-center py-6 text-[11px]">
+          <div className="text-slate-400 text-center py-8 text-[11px]">
             Simulation event log active. Events will stream here when the sim is running…
           </div>
         ) : (
           ordered.map((evt, idx) => {
             const kind = getKindConfig(evt.kind);
-            const worldCls = WORLD_STYLE[evt.world] ?? 'text-slate-400 border-slate-700 bg-slate-800';
+            const worldCls = WORLD_STYLE[evt.world] ?? 'text-slate-400 border-white/10 bg-white/[0.04]';
 
             return (
               <div
                 key={`${evt.simTime}-${evt.kind}-${idx}`}
-                className="flex items-start space-x-2 p-1.5 rounded bg-slate-950/80 border border-slate-800/60 hover:border-slate-700 transition-all text-[11px]"
+                className="flex items-start space-x-2.5 p-2 rounded-xl glass-light border border-white/10 hover:border-violet-400/30 hover:bg-white/[0.06] transition-all duration-200 text-[11px]"
               >
                 {/* Timestamp */}
-                <span className="text-slate-500 shrink-0 select-none tabular-nums">[{formatSimTime(evt.simTime)}]</span>
+                <span className="text-slate-400 shrink-0 select-none tabular-nums font-mono">[{formatSimTime(evt.simTime)}]</span>
 
                 {/* Kind badge */}
-                <span className={`inline-flex items-center space-x-1 px-1.5 py-0.5 rounded border text-[9px] uppercase font-bold shrink-0 ${kind.className}`}>
+                <span className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full border text-[9px] uppercase font-bold shrink-0 shadow-sm ${kind.className}`}>
                   {kind.icon}
                   <span>{kind.label}</span>
                 </span>
 
                 {/* World badge — only for single-world events */}
                 {evt.world !== 'both' && evt.world !== 'all' && (
-                  <span className={`px-1.5 py-0.5 rounded border text-[9px] uppercase font-bold shrink-0 ${worldCls}`}>
+                  <span className={`px-2 py-0.5 rounded-full border text-[9px] uppercase font-bold shrink-0 ${worldCls}`}>
                     {evt.world}
                   </span>
                 )}
