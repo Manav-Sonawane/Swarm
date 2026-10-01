@@ -27,6 +27,8 @@ export class SimEngine {
   public scenarios: ScenarioEngine;
   private lastSwarmEpoch: number;
   private lastRebalance: number;
+  private arrivals: number[] = []; // order creation times inside the forecast window
+  private surge = false;
 
   constructor(seed: number, startSimTime: number) {
     this.worlds = {
@@ -47,6 +49,41 @@ export class SimEngine {
     this.scenarios.reset(seed);
     this.lastSwarmEpoch = startSimTime;
     this.lastRebalance = startSimTime;
+    this.arrivals = [];
+    this.surge = false;
+  }
+
+  /** Demand forecast: order rate over the last SURGE_WINDOW_SEC, scaled to orders per hour. */
+  public forecast(): { ordersPerHourLast5Min: number; surge: boolean } {
+    return { ordersPerHourLast5Min: Math.round(this.arrivals.length * (3600 / CONFIG.SURGE_WINDOW_SEC)), surge: this.surge };
+  }
+
+  /**
+   * Moving-average forecaster (CONTEXT USP stretch): if the recent order rate is SURGE_RATIO x normal,
+   * assume it continues and raise a surge alert. With SURGE_MODE on, Swarm also holds briefly for batch
+   * partners and lets riders carry SURGE_CAPACITY orders until the rate falls.
+   */
+  private updateForecast(now: number): EventPayload[] {
+    this.arrivals = this.arrivals.filter(t => t > now - CONFIG.SURGE_WINDOW_SEC);
+    const { ordersPerHourLast5Min } = this.forecast();
+    const surge = CONFIG.SURGE_FORECAST && ordersPerHourLast5Min >= CONFIG.SURGE_RATIO * CONFIG.ORDERS_PER_HOUR;
+    if (surge === this.surge) return [];
+    this.surge = surge;
+
+    if (CONFIG.SURGE_MODE) {
+      const swarm = this.worlds.swarm;
+      swarm.batchHoldSec = surge ? CONFIG.SURGE_HOLD_SEC : CONFIG.MAX_HOLD;
+      for (const r of swarm.riders) r.capacity = surge ? CONFIG.SURGE_CAPACITY : CONFIG.CAPACITY;
+    }
+    return [{
+      simTime: now,
+      world: 'swarm',
+      kind: surge ? 'FORECAST_SURGE' : 'FORECAST_NORMAL',
+      message: surge
+        ? `📈 Surge forecast: ${ordersPerHourLast5Min} orders/h over the last 5 min (normal ${CONFIG.ORDERS_PER_HOUR}); expect it to continue.` +
+          (CONFIG.SURGE_MODE ? ` Swarm batches up to ${CONFIG.SURGE_CAPACITY} per trip and holds ${CONFIG.SURGE_HOLD_SEC}s for partners.` : '')
+        : `📉 Demand back to normal (${ordersPerHourLast5Min} orders/h).`,
+    }];
   }
 
   /** Advances every world by one tick. Returns events for the feed (visible worlds only). */
@@ -57,6 +94,8 @@ export class SimEngine {
 
     // 1. Shared order stream, classified once so every world gets the same promise (USP 0)
     const newOrders = this.orderGenerator.step(now, swarm.stores);
+    for (const o of newOrders) this.arrivals.push(o.createdAt);
+    events.push(...this.updateForecast(now));
     for (const o of newOrders) classifyOrder(o, swarm.stores, now, weatherMult);
     if (newOrders.length > 0) {
       this.all.forEach(w => w.addOrders(newOrders));
@@ -100,7 +139,10 @@ export class SimEngine {
     const pending = world.getPendingOrders();
     if (pending.length === 0) return;
     const t0 = performance.now();
-    const assignments = allocators[world.name](pending, world.riders, world.stores, world.ordersMap, now, weatherMult);
+    const assignments =
+      world.name === 'swarm'
+        ? runSwarmAllocation(pending, world.riders, world.stores, world.ordersMap, now, weatherMult, world.batchHoldSec)
+        : allocators[world.name](pending, world.riders, world.stores, world.ordersMap, now, weatherMult);
     const ms = performance.now() - t0;
     world.metricsEngine.recordDecision(ms);
     world.applyAssignments(assignments, Number(ms.toFixed(2)));

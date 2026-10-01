@@ -132,12 +132,12 @@ export function permutations<T>(arr: T[]): T[][] {
 // ---------------------------------------------------------------------------
 
 /** Store pools: a rider picks up only at its home store (or nearby stores if RIDER_BORROW_KM > 0). */
-export function canServe(rider: Rider, store: DarkStore, stores: DarkStore[]): boolean {
+export function canServe(rider: Rider, store: DarkStore, stores: DarkStore[], borrowKm: number = CONFIG.RIDER_BORROW_KM): boolean {
   if (store.offline) return false;
   if (rider.homeStoreId === store.id) return true;
-  if (CONFIG.RIDER_BORROW_KM <= 0) return false;
+  if (borrowKm <= 0) return false;
   const home = stores.find(s => s.id === rider.homeStoreId);
-  return !!home && haversineKm(home.loc, store.loc) <= CONFIG.RIDER_BORROW_KM;
+  return !!home && haversineKm(home.loc, store.loc) <= borrowKm;
 }
 
 export function hasStock(store: DarkStore, order: Order): boolean {
@@ -153,7 +153,7 @@ export function classifyOrder(order: Order, stores: DarkStore[], now: number, we
   let bestSec = Infinity;
   for (const s of stores) {
     if (s.offline || haversineKm(s.loc, order.loc) > CONFIG.GEOFENCE_KM || !hasStock(s, order)) continue;
-    const sec = travelTimeSec(s.loc, order.loc, now, weatherMult) * CONFIG.ETA_RISK_PAD + s.packTimeSec;
+    const sec = travelTimeSec(s.loc, order.loc, now, weatherMult) * CONFIG.CLASSIFY_PAD + s.packTimeSec;
     if (sec < bestSec) bestSec = sec;
   }
 

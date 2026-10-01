@@ -8,6 +8,14 @@ export interface RiderPlanState {
   rider: Rider;
   orderIds: string[]; // undelivered orders on the trip
   tripStoreId?: string; // store every order on the trip is picked up from
+  fairPenaltySec?: number; // W_FAIR x deliveries above the fleet average (workload balance)
+}
+
+/** Workload-balance penalty for each rider: deliveries (done + committed) above the fleet average. */
+export function fairPenalty(rider: Rider, fleet: Rider[]): number {
+  if (CONFIG.W_FAIR <= 0 || fleet.length === 0) return 0;
+  const mean = fleet.reduce((a, r) => a + r.stats.delivered + r.assignedOrderIds.length, 0) / fleet.length;
+  return CONFIG.W_FAIR * Math.max(0, rider.stats.delivered + rider.assignedOrderIds.length - mean);
 }
 
 /**
@@ -54,6 +62,7 @@ export function evaluateInsertion(
   }
 
   const newDrop: DropSpec = { orderId: order.id, loc: order.loc, promisedBy: order.promisedBy };
+  const fatigued = isFatigued(rider, nowSimTime);
   const load = existing.length;
   let best: CandidateScore | null = null;
 
@@ -84,9 +93,18 @@ export function evaluateInsertion(
 
     const eta = exp.dropEtas.get(order.id)!;
     const loadPenalty = CONFIG.W_LOAD * load;
+    // Fatigue routing: a rider past FATIGUE_DELIVERIES in the window pays extra for long trips
+    const fatiguePenalty = fatigued ? CONFIG.W_FATIGUE * exp.rideSec : 0;
     // Insertion cost: the new customer's wait + extra wait imposed on customers already on the trip
-    const totalCost = (eta - nowSimTime) + delayToOthers + loadPenalty;
+    const totalCost = (eta - nowSimTime) + delayToOthers + loadPenalty + fatiguePenalty + (st.fairPenaltySec ?? 0);
     const insertionSec = exp.rideSec - (oldExp?.rideSec ?? 0);
+    // Rider time this assignment consumes: ride legs plus the leg back to the store after the last drop
+    const lastDrop = exp.stops[exp.stops.length - 1].loc;
+    const busyNew = exp.rideSec + travelTimeSec(lastDrop, store.loc, exp.departAt, weatherMult);
+    const busyOld = oldExp
+      ? oldExp.rideSec + travelTimeSec(oldExp.stops[oldExp.stops.length - 1].loc, store.loc, oldExp.departAt, weatherMult)
+      : 0;
+    const riderSec = busyNew - busyOld;
     const soloRideSec =
       travelTimeSec(rider.loc, store.loc, nowSimTime, weatherMult) + travelTimeSec(store.loc, order.loc, nowSimTime, weatherMult);
 
@@ -106,6 +124,7 @@ export function evaluateInsertion(
       feasible,
       maxLatenessSec: Math.max(0, maxLateness),
       minSlackSec: minSlack,
+      riderSec,
       tripStops: exp.stops,
     };
 
@@ -115,13 +134,20 @@ export function evaluateInsertion(
   return best;
 }
 
+/** Rider has made FATIGUE_DELIVERIES or more deliveries within the last FATIGUE_WINDOW_SEC. */
+export function isFatigued(rider: Rider, now: number): boolean {
+  return rider.stats.deliveryTimes.filter(t => t > now - CONFIG.FATIGUE_WINDOW_SEC).length >= CONFIG.FATIGUE_DELIVERIES;
+}
+
 /** Feasible beats infeasible; among feasible lower cost (tie: more slack); among infeasible lower worst lateness. */
 export function better(a: CandidateScore, b: CandidateScore): boolean {
   if (a.feasible !== b.feasible) return a.feasible;
+  const ra = CONFIG.W_RIDE * (a.riderSec ?? 0);
+  const rb = CONFIG.W_RIDE * (b.riderSec ?? 0);
   if (a.feasible) {
-    if (Math.abs(a.totalCost - b.totalCost) > 1e-6) return a.totalCost < b.totalCost;
+    if (Math.abs(a.totalCost + ra - (b.totalCost + rb)) > 1e-6) return a.totalCost + ra < b.totalCost + rb;
     return a.minSlackSec > b.minSlackSec;
   }
-  if (Math.abs(a.maxLatenessSec - b.maxLatenessSec) > 1e-6) return a.maxLatenessSec < b.maxLatenessSec;
+  if (Math.abs(a.maxLatenessSec + ra - (b.maxLatenessSec + rb)) > 1e-6) return a.maxLatenessSec + ra < b.maxLatenessSec + rb;
   return a.totalCost < b.totalCost;
 }

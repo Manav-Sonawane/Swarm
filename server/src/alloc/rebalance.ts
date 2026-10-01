@@ -3,7 +3,7 @@ import { CONFIG } from '../config';
 import { selectCandidateStores, StoreCandidate } from '../sim/store-select';
 import { haversineKm } from '../sim/travel';
 import { QueueForecast, canServe, forecastQueue } from './feasibility';
-import { RiderPlanState, better, evaluateInsertion } from './insertion';
+import { RiderPlanState, better, evaluateInsertion, fairPenalty } from './insertion';
 import { buildDecision } from './swarm';
 
 export interface Move {
@@ -38,7 +38,7 @@ export function runRebalance(
     if (r.status === 'offline') continue;
     const onTrip = r.assignedOrderIds.map(id => orders.get(id)).filter((o): o is Order => !!o);
     if (onTrip.some(o => o.status === 'picked')) continue;
-    states.set(r.id, { rider: r, orderIds: onTrip.map(o => o.id), tripStoreId: onTrip[0]?.storeId });
+    states.set(r.id, { rider: r, orderIds: onTrip.map(o => o.id), tripStoreId: onTrip[0]?.storeId, fairPenaltySec: fairPenalty(r, riders) });
   }
 
   const isFrozen = (r: Rider, store: DarkStore | undefined) =>
@@ -89,7 +89,7 @@ export function runRebalance(
         : sameStore ? fc.finishAt.get(order.id) ?? fc.nextFinishAt(0)
         : fc.nextFinishAt(extraQueued.get(cs.store.id) ?? 0);
       const pool = [...states.values()]
-        .filter(s => s.rider.id !== fromId && (!s.tripStoreId || s.tripStoreId === cs.store.id) && canServe(s.rider, cs.store, stores))
+        .filter(s => s.rider.id !== fromId && (!s.tripStoreId || s.tripStoreId === cs.store.id) && canServe(s.rider, cs.store, stores, CONFIG.SWARM_BORROW_KM))
         .map(s => ({ s, d: haversineKm(s.rider.loc, cs.store.loc) }))
         .sort((a, b) => a.d - b.d || a.s.rider.id.localeCompare(b.s.rider.id))
         .slice(0, CONFIG.RIDER_CANDIDATES_PER_STORE);
