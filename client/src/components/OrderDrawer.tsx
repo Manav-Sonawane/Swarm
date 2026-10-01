@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { X, CheckCircle, AlertTriangle, ArrowRight, UserCheck, Store, ShieldCheck, Zap } from 'lucide-react';
+﻿import React, { useEffect, useState } from 'react';
+import { X, CheckCircle, AlertTriangle, UserCheck, Store, ShieldCheck, Zap, Timer, Filter } from 'lucide-react';
 import { OrderSnapshot, DecisionRecord } from '../types';
 import { formatSimTime, formatDuration } from '../lib/format';
 
@@ -9,190 +9,210 @@ interface OrderDrawerProps {
   onClose: () => void;
 }
 
-export const OrderDrawer: React.FC<OrderDrawerProps> = ({
-  order,
-  world,
-  onClose,
-}) => {
+const STATUS_COLOR: Record<string, string> = {
+  placed:    'bg-sky-950 text-sky-300 border-sky-600/40',
+  assigned:  'bg-indigo-950 text-indigo-300 border-indigo-600/40',
+  packing:   'bg-amber-950 text-amber-300 border-amber-600/40',
+  packed:    'bg-teal-950 text-teal-300 border-teal-600/40',
+  picked:    'bg-purple-950 text-purple-300 border-purple-600/40',
+  delivered: 'bg-emerald-950 text-emerald-300 border-emerald-600/40',
+  cancelled: 'bg-rose-950 text-rose-300 border-rose-600/40',
+};
+
+export const OrderDrawer: React.FC<OrderDrawerProps> = ({ order, world, onClose }) => {
   const [decision, setDecision] = useState<DecisionRecord | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!order) {
-      setDecision(null);
-      return;
-    }
-
+    if (!order) { setDecision(null); return; }
     setLoading(true);
     fetch(`/api/decision/${world}/${order.id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error('Not found');
-        return res.json();
-      })
-      .then((data: DecisionRecord) => {
-        setDecision(data);
-      })
-      .catch(() => {
-        setDecision(null);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+      .then(r => { if (!r.ok) throw new Error('Not found'); return r.json(); })
+      .then((data: DecisionRecord) => setDecision(data))
+      .catch(() => setDecision(null))
+      .finally(() => setLoading(false));
   }, [order, world]);
 
   if (!order) return null;
 
+  const classBadge = order.class === 'express'
+    ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+    : order.class === 'infeasible'
+    ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+    : 'bg-slate-800 text-slate-300 border-slate-700';
+
   return (
-    <div className="fixed inset-y-0 right-0 w-full max-w-md bg-slate-900/95 border-l border-slate-800 shadow-2xl backdrop-blur-xl z-50 flex flex-col transition-all">
-      {/* Drawer Header */}
-      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+    <div className="fixed inset-y-0 right-0 w-full max-w-md bg-slate-900/95 border-l border-slate-800 shadow-2xl backdrop-blur-xl z-50 flex flex-col">
+      {/* Header */}
+      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80 shrink-0">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center flex-wrap gap-2">
             <h2 className="text-base font-bold font-mono text-white">{order.id}</h2>
-            <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${
-                order.priority === 'express'
-                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                  : 'bg-slate-800 text-slate-300 border-slate-700'
-              }`}
-            >
-              {order.priority}
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${classBadge}`}>
+              {order.class ?? order.priority}
+            </span>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${STATUS_COLOR[order.status] ?? 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+              {order.status}
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            World: <strong className="uppercase text-emerald-400 font-mono">{world}</strong>
+            World: <strong className={`uppercase font-mono ${world === 'swarm' ? 'text-emerald-400' : 'text-slate-300'}`}>{world}</strong>
           </p>
         </div>
-
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all"
-        >
+        <button id="order-drawer-close" onClick={onClose} className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all">
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Drawer Content */}
+      {/* Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs font-sans">
-        {/* Status Pill */}
+
+        {/* Delivery window */}
         <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 flex items-center justify-between">
-          <div>
-            <span className="text-[10px] text-slate-500 uppercase font-mono block">Delivery Window</span>
-            <div className="flex items-center space-x-2 mt-1">
-              <span className="text-slate-300 font-mono">Promised: {formatSimTime(order.promisedBy)}</span>
-            </div>
-          </div>
-          <div>
-            {order.isLate ? (
-              <span className="flex items-center space-x-1 px-2.5 py-1 rounded bg-rose-950/80 border border-rose-600/40 text-rose-300 font-bold">
-                <AlertTriangle className="w-3.5 h-3.5" />
-                <span>At Risk / Late</span>
-              </span>
-            ) : (
-              <span className="flex items-center space-x-1 px-2.5 py-1 rounded bg-emerald-950/80 border border-emerald-600/40 text-emerald-300 font-bold">
-                <CheckCircle className="w-3.5 h-3.5" />
-                <span>On Time</span>
-              </span>
+          <div className="space-y-0.5">
+            <span className="text-[10px] text-slate-500 uppercase font-mono">Delivery Window</span>
+            <div className="font-mono text-slate-300">Created: {formatSimTime(order.createdAt)}</div>
+            <div className="font-mono text-slate-300">Promised: <strong className="text-white">{formatSimTime(order.promisedBy)}</strong></div>
+            {order.projectedEta != null && (
+              <div className={`font-mono ${order.projectedEta > order.promisedBy ? 'text-rose-400' : 'text-emerald-400'}`}>
+                ETA: {formatSimTime(order.projectedEta)}{' '}
+                ({order.projectedEta > order.promisedBy
+                  ? `+${Math.round(order.projectedEta - order.promisedBy)}s late`
+                  : `${Math.round(order.promisedBy - order.projectedEta)}s slack`})
+              </div>
+            )}
+            {order.deliveredAt != null && (
+              <div className="font-mono text-emerald-400">Delivered: {formatSimTime(order.deliveredAt)}</div>
             )}
           </div>
+          {order.isLate ? (
+            <span className="flex items-center space-x-1 px-2.5 py-1 rounded bg-rose-950/80 border border-rose-600/40 text-rose-300 font-bold">
+              <AlertTriangle className="w-3.5 h-3.5" /><span>At Risk</span>
+            </span>
+          ) : (
+            <span className="flex items-center space-x-1 px-2.5 py-1 rounded bg-emerald-950/80 border border-emerald-600/40 text-emerald-300 font-bold">
+              <CheckCircle className="w-3.5 h-3.5" /><span>On Time</span>
+            </span>
+          )}
         </div>
 
-        {/* Explainability Record */}
+        {/* Decision explainability */}
         {loading ? (
-          <div className="p-8 text-center text-slate-400">Loading decision explainability...</div>
+          <div className="p-8 text-center text-slate-400 animate-pulse">Loading explainability record…</div>
         ) : decision ? (
           <div className="space-y-4">
-            {/* Natural Language Reason Box */}
-            <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-lg p-3 text-emerald-300">
-              <div className="flex items-center space-x-1.5 text-xs font-bold text-emerald-400 mb-1">
-                <Zap className="w-4 h-4" />
-                <span>Decision Rationale</span>
+
+            {/* Rationale */}
+            <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-lg p-3">
+              <div className="flex items-center space-x-1.5 text-xs font-bold text-emerald-400 mb-1.5">
+                <Zap className="w-4 h-4" /><span>Decision Rationale</span>
               </div>
-              <p className="text-xs leading-relaxed text-emerald-200/90 font-mono">
-                "{decision.reason}"
-              </p>
+              <p className="text-xs leading-relaxed text-emerald-200/90 font-mono">"{decision.reason}"</p>
             </div>
 
-            {/* Chosen Assignment Details */}
+            {/* Meta badges */}
+            <div className="flex flex-wrap gap-2">
+              {decision.decisionMs != null && (
+                <span className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono ${
+                  decision.decisionMs < 100 ? 'bg-emerald-950/40 border-emerald-600/40 text-emerald-300'
+                  : decision.decisionMs < 200 ? 'bg-amber-950/40 border-amber-600/40 text-amber-300'
+                  : 'bg-rose-950/40 border-rose-600/40 text-rose-300'}`}>
+                  <Timer className="w-3.5 h-3.5" /><span>Decision: <strong>{decision.decisionMs.toFixed(1)}ms</strong></span>
+                </span>
+              )}
+              {(decision.batchSavingSec ?? decision.chosen.breakdown.batchSavingSec ?? 0) > 0 && (
+                <span className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border bg-teal-950/40 border-teal-600/40 text-teal-300 text-xs font-mono">
+                  <ShieldCheck className="w-3.5 h-3.5" /><span>Batch saving: <strong>-{formatDuration(decision.batchSavingSec ?? decision.chosen.breakdown.batchSavingSec)}</strong></span>
+                </span>
+              )}
+              {(decision.rejectedInfeasible ?? 0) > 0 && (
+                <span className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border bg-rose-950/40 border-rose-600/40 text-rose-300 text-xs font-mono">
+                  <Filter className="w-3.5 h-3.5" /><span><strong>{decision.rejectedInfeasible}</strong> infeasible filtered</span>
+                </span>
+              )}
+            </div>
+
+            {/* Chosen pair + breakdown */}
             <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 space-y-3">
               <h3 className="font-mono text-xs font-bold text-white flex items-center justify-between border-b border-slate-800 pb-1.5">
-                <span>Selected Candidate Pair</span>
-                <span className="text-emerald-400 font-mono">
-                  Cost Score: {Math.round(decision.chosen.totalCost)}
-                </span>
+                <span>Selected Assignment</span>
+                <span className="text-emerald-400">Score: {Math.round(decision.chosen.totalCost)}</span>
               </h3>
-
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-slate-900 border border-slate-800 p-2 rounded flex items-center space-x-2">
                   <UserCheck className="w-4 h-4 text-emerald-400" />
-                  <div>
-                    <span className="text-[10px] text-slate-500 block uppercase">Rider</span>
-                    <strong className="text-white font-mono">{decision.chosen.riderId}</strong>
-                  </div>
+                  <div><span className="text-[10px] text-slate-500 block uppercase">Rider</span><strong className="text-white font-mono text-xs">{decision.chosen.riderId}</strong></div>
                 </div>
-
                 <div className="bg-slate-900 border border-slate-800 p-2 rounded flex items-center space-x-2">
                   <Store className="w-4 h-4 text-sky-400" />
-                  <div>
-                    <span className="text-[10px] text-slate-500 block uppercase">Dark Store</span>
-                    <strong className="text-white font-mono">{decision.chosen.storeId}</strong>
-                  </div>
+                  <div><span className="text-[10px] text-slate-500 block uppercase">Dark Store</span><strong className="text-white font-mono text-xs">{decision.chosen.storeId}</strong></div>
                 </div>
               </div>
-
-              {/* Batching Savings Banner if available */}
-              {decision.chosen.breakdown.batchSavingSec > 0 && (
-                <div className="bg-teal-950/60 border border-teal-500/30 text-teal-300 p-2 rounded text-[11px] font-mono flex items-center justify-between">
-                  <span>✨ Multi-Order Batch Savings:</span>
-                  <strong className="text-teal-400 font-bold">
-                    -{Math.round(decision.chosen.breakdown.batchSavingSec)}s travel time
-                  </strong>
-                </div>
-              )}
-
-              {/* Breakdown Cards */}
-              <div className="space-y-1.5 pt-1">
-                <span className="text-[10px] uppercase font-mono text-slate-400">Cost Breakdown:</span>
-                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
-                  <div className="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between">
-                    <span className="text-slate-400">Travel Leg:</span>
-                    <span className="text-white">{formatDuration(decision.chosen.breakdown.travelSec)}</span>
-                  </div>
-                  <div className="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between">
-                    <span className="text-slate-400">Pack Queue Wait:</span>
-                    <span className="text-white">{formatDuration(decision.chosen.breakdown.packWaitSec)}</span>
-                  </div>
-                  <div className="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between">
-                    <span className="text-slate-400">Insertion Extra:</span>
-                    <span className="text-white">{formatDuration(decision.chosen.breakdown.insertionSec)}</span>
-                  </div>
-                  <div className="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between">
-                    <span className="text-slate-400">Lateness Penalty:</span>
-                    <span className="text-rose-400">{Math.round(decision.chosen.breakdown.latenessPenalty)}</span>
-                  </div>
+              <div className="space-y-1">
+                <span className="text-[10px] text-slate-500 uppercase font-mono">Cost Breakdown:</span>
+                <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono">
+                  {[
+                    ['Travel', formatDuration(decision.chosen.breakdown.travelSec), 'text-white'],
+                    ['Pack Wait', formatDuration(decision.chosen.breakdown.packWaitSec), 'text-white'],
+                    ['Insertion Extra', formatDuration(decision.chosen.breakdown.insertionSec), 'text-white'],
+                    ['Lateness Penalty', String(Math.round(decision.chosen.breakdown.latenessPenalty)), 'text-rose-400'],
+                  ].map(([label, value, color]) => (
+                    <div key={label} className="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between">
+                      <span className="text-slate-400">{label}:</span><span className={color}>{value}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
 
-            {/* Runners-Up Options */}
+            {/* Store options table */}
+            {decision.storeOptions && decision.storeOptions.length > 0 && (
+              <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 space-y-2">
+                <h4 className="font-mono text-xs font-bold text-slate-300 flex items-center space-x-1.5">
+                  <Store className="w-3.5 h-3.5 text-sky-400" /><span>Store Options ({decision.storeOptions.length})</span>
+                </h4>
+                <div className="grid grid-cols-[1fr_60px_48px_52px] text-[9px] uppercase font-mono text-slate-500 pb-1 border-b border-slate-800">
+                  <span>Store</span><span className="text-center">ETA</span><span className="text-center">Queue</span><span className="text-center">OK?</span>
+                </div>
+                {decision.storeOptions.map((opt, i) => (
+                  <div key={i} className={`grid grid-cols-[1fr_60px_48px_52px] items-center text-[11px] font-mono py-1 px-1 rounded ${opt.storeId === decision.chosen.storeId ? 'bg-emerald-950/30 border border-emerald-600/30' : ''}`}>
+                    <span className="text-slate-300 truncate">{opt.storeId}</span>
+                    <span className="text-center text-slate-400">{formatSimTime(opt.eta)}</span>
+                    <span className="text-center text-slate-400">{opt.queueDepth}</span>
+                    <span className={`text-center font-bold ${opt.feasible ? 'text-emerald-400' : 'text-rose-400'}`}>{opt.feasible ? '✓' : '✗'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Rider options table */}
+            {decision.riderOptions && decision.riderOptions.length > 0 && (
+              <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 space-y-2">
+                <h4 className="font-mono text-xs font-bold text-slate-300 flex items-center space-x-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" /><span>Rider Options ({decision.riderOptions.length})</span>
+                </h4>
+                <div className="grid grid-cols-[1fr_72px_72px_52px] text-[9px] uppercase font-mono text-slate-500 pb-1 border-b border-slate-800">
+                  <span>Rider</span><span className="text-center">Insertion</span><span className="text-center">Trip ETA</span><span className="text-center">OK?</span>
+                </div>
+                {decision.riderOptions.map((opt, i) => (
+                  <div key={i} className={`grid grid-cols-[1fr_72px_72px_52px] items-center text-[11px] font-mono py-1 px-1 rounded ${opt.riderId === decision.chosen.riderId ? 'bg-emerald-950/30 border border-emerald-600/30' : ''}`}>
+                    <span className="text-slate-300 truncate">{opt.riderId}</span>
+                    <span className="text-center text-slate-400">{formatDuration(opt.insertionTime)}</span>
+                    <span className="text-center text-slate-400">{formatSimTime(opt.tripEta)}</span>
+                    <span className={`text-center font-bold ${opt.feasible ? 'text-emerald-400' : 'text-rose-400'}`}>{opt.feasible ? '✓' : '✗'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Runners-up */}
             {decision.runnersUp && decision.runnersUp.length > 0 && (
               <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 space-y-2">
-                <h4 className="font-mono text-xs font-bold text-slate-400">
-                  Runner-Up Candidates Evaluated:
-                </h4>
-                {decision.runnersUp.map((runner, rIdx) => (
-                  <div
-                    key={rIdx}
-                    className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between text-[11px] font-mono"
-                  >
-                    <div>
-                      <span className="text-slate-400">#{rIdx + 2}: </span>
-                      <strong className="text-white">{runner.riderId}</strong> ({runner.storeId})
-                    </div>
-                    <div className="text-right">
-                      <span className="text-slate-400">Cost: </span>
-                      <strong className="text-amber-400">{Math.round(runner.totalCost)}</strong>
-                    </div>
+                <h4 className="font-mono text-xs font-bold text-slate-400">Runner-Up Candidates:</h4>
+                {decision.runnersUp.map((runner, i) => (
+                  <div key={i} className="p-2 rounded bg-slate-900 border border-slate-800 flex items-center justify-between text-[11px] font-mono">
+                    <div><span className="text-slate-500">#{i + 2}: </span><strong className="text-white">{runner.riderId}</strong><span className="text-slate-500"> @ {runner.storeId}</span></div>
+                    <div><span className="text-slate-400">Cost: </span><strong className="text-amber-400">{Math.round(runner.totalCost)}</strong></div>
                   </div>
                 ))}
               </div>
@@ -200,7 +220,7 @@ export const OrderDrawer: React.FC<OrderDrawerProps> = ({
           </div>
         ) : (
           <div className="p-4 bg-slate-950 border border-slate-800 rounded text-slate-400">
-            No detailed decision record stored for this order yet.
+            No decision record for this order yet. Orders in <em>placed</em> status have not been assigned.
           </div>
         )}
       </div>

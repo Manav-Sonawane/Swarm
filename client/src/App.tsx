@@ -130,6 +130,7 @@ const App: React.FC = () => {
         onClose={() => setScoreboardOpen(false)}
         baselineMetrics={tickData.worlds.baseline.metrics}
         swarmMetrics={tickData.worlds.swarm.metrics}
+        naiveMetrics={tickData.worlds.naive?.metrics}
       />
     </div>
   );

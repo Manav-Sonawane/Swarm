@@ -9,6 +9,7 @@ export interface RiderSnapshot {
   load: number;
   routeLine: [number, number][];
   homeStoreId: string;
+  deliveries: number; // count this shift
 }
 
 export interface OrderSnapshot {
@@ -17,10 +18,12 @@ export interface OrderSnapshot {
   lng: number;
   status: OrderStatus;
   priority: 'express' | 'regular';
+  class: 'express' | 'regular' | 'infeasible';
   isLate: boolean;
   riderId?: string;
   storeId?: string;
   promisedBy: number;
+  projectedEta?: number;
   createdAt: number;
   deliveredAt?: number;
   zoneId?: string;
@@ -32,6 +35,8 @@ export interface StoreSnapshot {
   lat: number;
   lng: number;
   queue: number;
+  packingQueue?: { orderId: string; status: 'waiting' | 'packing' | 'ready' }[];
+  inventory?: Record<string, number>;
 }
 
 export interface Metrics {
@@ -40,12 +45,25 @@ export interface Metrics {
   p90DeliverySec: number;
   ordersPerTrip: number;
   kmPerOrder: number;
+  kmTotal: number;
   utilization: number;
   fairnessStdDev: number;
   lateNow: number;
   delivered: number;
   pending: number;
-  history: { t: number; onTimeRate: number; avgDeliverySec: number }[];
+  // extended contract fields
+  p90LatenessSec: number;
+  maxLatenessSec: number;
+  ordersFailed: number;
+  ordersRejected: number;
+  reassignments: number;
+  decisionMsAvg: number;
+  decisionMsMax: number;
+  ordersByClass: { express: number; regular: number; infeasible: number };
+  ordersPerZone: Record<string, number>;
+  packingQueueDepth: number;
+  maxPackingQueueAcrossStores: number;
+  history: { t: number; onTimeRate: number; avgDeliverySec: number; packingQueueDepth: number }[];
 }
 
 export interface WorldSnapshot {
@@ -65,6 +83,7 @@ export interface TickPayload {
   worlds: {
     baseline: WorldSnapshot;
     swarm: WorldSnapshot;
+    naive?: WorldSnapshot;
   };
 }
 
@@ -89,6 +108,8 @@ export interface CandidateScore {
   };
   eta: number;
   feasible: boolean;
+  maxLatenessSec?: number;
+  minSlackSec?: number;
 }
 
 export interface DecisionRecord {
@@ -96,6 +117,13 @@ export interface DecisionRecord {
   chosen: CandidateScore;
   runnersUp: CandidateScore[];
   reason: string;
+  chosenStore?: string;
+  chosenRider?: string;
+  storeOptions?: { storeId: string; eta: number; queueDepth: number; feasible: boolean }[];
+  riderOptions?: { riderId: string; insertionTime: number; tripEta: number; feasible: boolean }[];
+  batchSavingSec?: number;
+  rejectedInfeasible?: number;
+  decisionMs?: number;
 }
 
 export type ScenarioName = 'normal' | 'monsoon' | 'spike' | 'riders_offline' | 'stockout' | 'cancel_burst' | 'clear_weather';
