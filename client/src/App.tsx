@@ -9,6 +9,7 @@ import { MapView } from './components/MapView';
 import { MetricsPanel } from './components/MetricsPanel';
 import { OrderDrawer } from './components/OrderDrawer';
 import { EventLog } from './components/EventLog';
+import { OrderLedger } from './components/OrderLedger';
 import { FinalScoreboardModal } from './components/FinalScoreboardModal';
 import { PitchDeckModal } from './components/PitchDeckModal';
 
@@ -117,6 +118,19 @@ const App: React.FC = () => {
           baselineMetrics={tickData.worlds.baseline.metrics}
           swarmMetrics={tickData.worlds.swarm.metrics}
         />
+
+        <OrderLedger
+          baselineOrders={tickData.worlds.baseline.orders}
+          swarmOrders={tickData.worlds.swarm.orders}
+          baselineStores={tickData.worlds.baseline.stores}
+          swarmStores={tickData.worlds.swarm.stores}
+          baselineRiders={tickData.worlds.baseline.riders}
+          swarmRiders={tickData.worlds.swarm.riders}
+          simTime={tickData.simTime}
+          seed={tickData.seed}
+          onSelectOrder={handleSelectOrder}
+        />
+
         <EventLog events={events} />
       </main>
 

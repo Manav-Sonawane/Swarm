@@ -283,6 +283,7 @@ The prototype import already covers the old "foundation" and "moving riders" pha
 
 **Person B:**
 - [x] `ScenarioBar.tsx` final buttons + "clear" (Monsoon, IPL Spike, Store Offline, Riders Offline, Stockout, Cancel Burst, Clear All)
+- [x] `OrderLedger.tsx`: Side-by-side Blinkit-style live delivery ticker with deterministic Indian customer names (Ankit, Priya, Rohit...), items basket, delivery timeline stages, and on-time ✓ vs late ❌ comparison
 - [x] Final scoreboard / results polish (3-way ResultsView modal with summary tabs, charts, breakdown, winner highlights)
 - [x] Pitch deck (6 interactive slides: problem, the coupled decision, algorithm architecture, live digital twin, empirical results with <15ms latency, future roadmap + judge notes toggle)
 
