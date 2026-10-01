@@ -12,6 +12,7 @@ import { EventLog } from './components/EventLog';
 import { OrderLedger } from './components/OrderLedger';
 import { FinalScoreboardModal } from './components/FinalScoreboardModal';
 import { PitchDeckModal } from './components/PitchDeckModal';
+import { AtmosphericBackground } from './components/AtmosphericBackground';
 import { Map as MapIcon } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -86,14 +87,9 @@ const App: React.FC = () => {
     : null;
 
   return (
-    <div className="intelligence-root min-h-screen relative overflow-x-hidden bg-[#050507] text-slate-100 font-sans selection:bg-violet-600/30 selection:text-white">
-      {/* Atmospheric Background Lights */}
-      <div className="fixed inset-0 pointer-events-none -z-10">
-        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] rounded-full bg-violet-900/15 blur-[140px]" />
-        <div className="absolute top-1/3 right-1/4 w-[500px] h-[500px] rounded-full bg-purple-900/10 blur-[130px]" />
-        <div className="absolute bottom-10 left-1/3 w-[600px] h-[600px] rounded-full bg-[#180B2E]/25 blur-[150px]" />
-        <div className="absolute inset-0 bg-radial-deep from-transparent via-[#050507]/40 to-[#050507]" />
-      </div>
+    <div className="intelligence-root min-h-screen relative overflow-x-hidden bg-[#03020a] text-slate-100 font-sans">
+      {/* Scroll-reactive Atmospheric Background */}
+      <AtmosphericBackground />
 
       <Header
         connected={connected}
@@ -105,7 +101,7 @@ const App: React.FC = () => {
         onOpenPitchDeck={() => setPitchDeckOpen(true)}
       />
 
-      <main className="relative z-10 flex-1 max-w-[1700px] w-full mx-auto p-4 sm:p-6 space-y-5">
+      <main className="relative z-10 flex-1 max-w-[1700px] w-full mx-auto px-4 sm:px-6 pb-8 space-y-4">
         <SimControls
           running={tickData.running}
           speed={tickData.speed}
@@ -120,14 +116,17 @@ const App: React.FC = () => {
 
         {/* Map Layout Toolbar & Large Map View */}
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 glass-medium px-5 py-3 rounded-2xl border border-white/10 shadow-glass-sm">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-6 h-6 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+        <div className="flex flex-wrap items-center justify-between gap-3 glass-medium px-5 py-3 rounded-2xl border border-white/10 shadow-glass-sm relative overflow-hidden">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+            <div className="flex items-center gap-2.5">
+              <div className="w-6 h-6 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
                 <MapIcon className="w-3.5 h-3.5 text-emerald-400" />
               </div>
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">
-                Live Mumbai Digital Twin Maps (3 Deliverable Approaches)
+              <span className="text-[0.8rem] font-bold text-slate-200 tracking-[-0.01em]"
+                    style={{ fontFamily: 'var(--font-primary)' }}>
+                Live Mumbai Digital Twin Maps
               </span>
+              <span className="text-[10px] font-mono text-slate-500 hidden sm:inline">3 Deliverable Approaches</span>
             </div>
 
             <div className="flex items-center space-x-2 flex-wrap gap-1.5">

@@ -78,25 +78,31 @@ export const ScenarioBar: React.FC<ScenarioBarProps> = ({
   ];
 
   return (
-    <div className="glass-medium border border-white/10 rounded-2xl p-4 shadow-glass-md transition-all duration-300">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center space-x-2">
-          <ShieldAlert className="w-4 h-4 text-amber-400" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-200 font-mono">
-            Live Scenario Stress-Test Suite
-          </span>
+    <div className="glass-medium border border-white/10 rounded-2xl p-4 shadow-glass-md transition-all duration-300 relative overflow-hidden">
+      {/* Interior top sheen */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+      <div className="flex items-center justify-between mb-3.5">
+        <div className="flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          <div>
+            <span className="text-[0.8rem] font-bold text-slate-200 leading-tight tracking-[-0.01em]"
+                  style={{ fontFamily: 'var(--font-primary)' }}>
+              Live Scenario Stress-Test Suite
+            </span>
+          </div>
           {activeScenario && activeScenario !== 'normal' && (
-            <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40 shadow-[0_0_12px_rgba(245,158,11,0.3)] animate-pulse">
-              Active: {activeScenario.toUpperCase()}
+            <span className="text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40 shadow-[0_0_12px_rgba(245,158,11,0.3)] animate-pulse">
+              {activeScenario.toUpperCase()}
             </span>
           )}
         </div>
-        <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
-          Seeded multi-world synchronized injection
+        <span className="text-[10px] text-slate-500 font-mono hidden sm:inline tracking-wide">
+          Seeded multi-world injection
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
         {scenarios.map((sc) => {
           const isActive = activeScenario === sc.id || (sc.id === 'clear' && activeScenario === 'normal');
           return (
@@ -106,14 +112,15 @@ export const ScenarioBar: React.FC<ScenarioBarProps> = ({
               className={`p-3 rounded-xl border text-left transition-all duration-300 active:scale-95 flex flex-col justify-between group ${
                 isActive
                   ? 'bg-gradient-to-br from-violet-900/60 via-purple-900/40 to-slate-900/80 border-violet-400/60 text-white ring-1 ring-violet-400/40 shadow-[0_0_20px_rgba(124,58,237,0.35)]'
-                  : 'glass-light border-white/10 text-slate-300 hover:text-white hover:border-violet-400/30 hover:shadow-[0_0_15px_rgba(124,58,237,0.2)] hover:-translate-y-0.5'
+                  : 'glass-light border-white/[0.08] text-slate-300 hover:text-white hover:border-violet-400/30 hover:shadow-[0_0_15px_rgba(124,58,237,0.2)] hover:-translate-y-0.5'
               }`}
             >
-              <div className="flex items-center space-x-2 mb-1.5">
-                <span className="transition-transform duration-300 group-hover:scale-110">{sc.icon}</span>
-                <span className="text-xs font-bold font-mono truncate">{sc.label}</span>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="transition-transform duration-300 group-hover:scale-110 flex-shrink-0">{sc.icon}</span>
+                <span className="text-[11px] font-bold leading-tight" style={{ fontFamily: 'var(--font-primary)' }}>{sc.label}</span>
               </div>
-              <span className="text-[10px] text-slate-400 group-hover:text-lavender-200/80 font-sans leading-tight line-clamp-1">
+              <span className="text-[10px] text-slate-400 group-hover:text-lavender-200/80 leading-tight line-clamp-1"
+                    style={{ fontFamily: 'var(--font-primary)' }}>
                 {sc.desc}
               </span>
             </button>

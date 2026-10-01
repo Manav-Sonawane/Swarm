@@ -59,17 +59,20 @@ export const EventLog: React.FC<EventLogProps> = ({ events }) => {
   }, [events.length]);
 
   return (
-    <div className="glass-medium border border-white/10 rounded-2xl p-4 shadow-glass-md flex flex-col font-mono text-xs transition-all duration-300" style={{ height: '230px' }}>
+    <div className="glass-medium border border-white/10 rounded-2xl p-4 shadow-glass-md flex flex-col font-mono text-xs transition-all duration-300 relative overflow-hidden" style={{ height: '230px' }}>
+      {/* Top sheen */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/10 pb-2.5 mb-2.5 shrink-0">
-        <div className="flex items-center space-x-2 text-slate-200">
-          <Terminal className="w-4 h-4 text-cyan-accent" />
-          <span className="font-bold tracking-tight">Real-Time Event Feed</span>
-          <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-400/30 px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.3)] animate-pulse">
+      <div className="flex items-center justify-between border-b border-white/[0.08] pb-2.5 mb-2.5 shrink-0">
+        <div className="flex items-center gap-2 text-slate-200">
+          <Terminal className="w-3.5 h-3.5 text-cyan-accent" />
+          <span className="text-[0.8rem] font-bold tracking-[-0.01em]" style={{ fontFamily: 'var(--font-primary)' }}>Real-Time Event Feed</span>
+          <span className="text-[9px] font-bold font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-400/30 px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.3)] animate-pulse tracking-wider uppercase">
             LIVE
           </span>
         </div>
-        <span className="text-[10px] text-slate-400 font-mono">{events.length} events · newest first</span>
+        <span className="text-[10px] text-slate-500 font-mono">{events.length} events · newest first</span>
       </div>
 
       {/* Event list */}
