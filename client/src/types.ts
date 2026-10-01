@@ -126,4 +126,4 @@ export interface DecisionRecord {
   decisionMs?: number;
 }
 
-export type ScenarioName = 'normal' | 'monsoon' | 'spike' | 'riders_offline' | 'stockout' | 'cancel_burst' | 'clear_weather';
+export type ScenarioName = 'normal' | 'monsoon' | 'spike' | 'surge' | 'riders_offline' | 'rider_offline' | 'store_offline' | 'stockout' | 'cancel_burst' | 'clear_weather' | 'clear';

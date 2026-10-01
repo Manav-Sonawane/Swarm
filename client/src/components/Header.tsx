@@ -1,5 +1,5 @@
 import React from 'react';
-import { Truck, Activity, CloudRain, Zap, Award, HelpCircle } from 'lucide-react';
+import { Truck, Activity, CloudRain, Zap, Award, Presentation } from 'lucide-react';
 import { formatSimTime } from '../lib/format';
 
 interface HeaderProps {
@@ -9,6 +9,7 @@ interface HeaderProps {
   activeScenario: string;
   weatherMult: number;
   onOpenScoreboard: () => void;
+  onOpenPitchDeck: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,6 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   activeScenario,
   weatherMult,
   onOpenScoreboard,
+  onOpenPitchDeck,
 }) => {
   return (
     <header className="w-full bg-[#0b0f19]/90 border-b border-slate-800/80 px-6 py-3 flex flex-wrap items-center justify-between gap-4 backdrop-blur-md sticky top-0 z-40">
@@ -88,15 +90,25 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
+        {/* Pitch Deck Trigger */}
+        <button
+          onClick={onOpenPitchDeck}
+          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 font-semibold text-xs flex items-center space-x-1.5 transition-all active:scale-95"
+        >
+          <Presentation className="w-4 h-4 text-emerald-400" />
+          <span>Pitch Deck (6 Slides)</span>
+        </button>
+
         {/* Scoreboard Trigger */}
         <button
           onClick={onOpenScoreboard}
           className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-900 font-semibold text-xs flex items-center space-x-1.5 shadow-md shadow-emerald-600/20 transition-all active:scale-95"
         >
-          <Award className="w-4 h-4 text-black" />
+          <Award className="w-4 h-4 text-black font-black" />
           <span>Final Scoreboard</span>
         </button>
       </div>
     </header>
   );
 };
+
