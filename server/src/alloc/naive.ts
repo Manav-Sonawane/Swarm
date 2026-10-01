@@ -35,9 +35,9 @@ export function runNaiveAllocation(
     const rider = available[idx];
     const store = stores.find(s => s.id === rider.homeStoreId)!;
 
-    if (!hasStock(store, order)) {
+    if (store.offline || !hasStock(store, order)) {
       order.status = 'failed';
-      order.failReason = `stock-out at ${store.name}`;
+      order.failReason = store.offline ? `${store.name} is offline` : `stock-out at ${store.name}`;
       continue; // rider stays free
     }
     available.splice(idx, 1);

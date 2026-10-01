@@ -183,7 +183,8 @@ ETA = packing delay       (orders ahead in queue / packing slots × pack time + 
    - Already-promised order → assign the option that minimizes the worst lateness, and flag it **at-risk**.
 8. **Rebalance with a freeze window:** every `REBALANCE_SEC`, reconsider orders that are assigned but not picked up.
    - **Frozen** (never moved): rider at the store or departed, or within `FREEZE_DIST_KM` (0.3 km) of the store.
-   - **Move** only if the new option saves ≥ `REASSIGN_MIN_GAIN_SEC` (60 s) or turns an at-risk order feasible. This prevents churn: re-planning on every event makes operations unstable.
+   - **Move** only if the new option saves ≥ `REASSIGN_MIN_GAIN_SEC` (60 s) or turns an at-risk order feasible; a late order may also move to a still-late but ≥60 s sooner option, and an on-time order is never moved somewhere it would be late. This prevents churn: re-planning on every event makes operations unstable.
+   - Also runs immediately on every disruption. Orders that started packing keep their store.
    - Every move counts as a **reassignment** (metric).
 9. **Hold for batching:** an order may wait one epoch for a batch partner only if its slack after the best solo option > `HOLD_SLACK` (240 s) and it is younger than `MAX_HOLD` (60 s). Waiting has an opportunity cost.
 10. **Rider departure:** leave when all orders are packed AND (capacity full OR min over the trip of `promisedBy − projected drop ETA` < `DEPART_SLACK`, 120 s). Slack is measured against the projected *drop* time, not "now".
@@ -253,7 +254,7 @@ All three get the **same promise** per order by default (classified once on the 
 
 **Order stream** (seeded for reproducibility):
 - Poisson arrivals, 200–400 orders/hour during peak
-- Spatially distributed: weighted by zone population
+- Spatially distributed: weighted by zone population; customers are kept on land (`seed/land.ts` outline of the service area)
 - Item mix varies by store and time
 - Some orders are express, some regular
 - 5% of orders are infeasible for express window
@@ -273,6 +274,8 @@ All three get the **same promise** per order by default (classified once on the 
 - On-time delivery rate (%)
 - Worst-case lateness: P90 and max lateness (min)
 - Delayed / failed deliveries (count)
+
+On-time % and lateness are computed over every **decided** order: delivered, failed, or undelivered and already past its promise (counted at its lateness so far). Counting only deliveries would reward an allocator for leaving its worst orders undelivered.
 
 **Speed & efficiency:**
 - Avg and P90 delivery time (min)
@@ -370,6 +373,8 @@ All three get the **same promise** per order by default (classified once on the 
 All in `config.ts`:
 - `STORES` (locations, inventory)
 - `RIDERS_PER_STORE` (6)
+- `RIDER_BORROW_KM` (0 = riders pick up only at their home store)
+- `ORDERS_PER_HOUR` (300; spike = 3×. Calibrated so Baseline isn't saturated: ~66–80% on time)
 - `PACK_TIME_SEC` (120)
 - `CAPACITY_PER_TRIP` (3–4 orders)
 - `GEOFENCE_KM` (3)
@@ -378,7 +383,9 @@ All in `config.ts`:
 - `REBALANCE_SEC` (60)
 - `FREEZE_DIST_KM` (0.3)
 - `REASSIGN_MIN_GAIN_SEC` (60)
-- `HOLD_SLACK` (240 sec) / `MAX_HOLD` (60 sec)
+- `HOLD_SLACK` (240 sec) / `MAX_HOLD` (0 sec: batch-partner holds disabled after Checkpoint 3 tuning; at this order density they cost more than they saved)
+- `REBALANCE_MAX_ORDERS` (40)
+- `RIDER_CANDIDATES_PER_STORE` (10)
 - `DEPART_SLACK` (120 sec, measured against projected drop ETA)
 - `ETA_RISK_PAD` (1.15)
 - `DECISION_BUDGET_MS` (200)

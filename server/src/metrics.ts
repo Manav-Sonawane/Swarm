@@ -56,7 +56,14 @@ export class MetricsEngine {
     // 2. Delivery time & lateness
     const timesSec = deliveredOrders.map(o => o.deliveredAt! - o.createdAt).sort((a, b) => a - b);
     const avgDeliverySec = deliveredCount > 0 ? timesSec.reduce((a, b) => a + b, 0) / deliveredCount : 0;
-    const lateness = deliveredOrders.map(o => Math.max(0, o.deliveredAt! - o.promisedBy)).sort((a, b) => a - b);
+    // Lateness over decided orders: delivered ones, plus undelivered ones already past their promise
+    // (counted at their lateness so far, a lower bound). Delivered-only would hide the worst orders.
+    const lateness = [
+      ...deliveredOrders.map(o => Math.max(0, o.deliveredAt! - o.promisedBy)),
+      ...allOrders
+        .filter(o => !['delivered', 'cancelled', 'failed', 'rejected'].includes(o.status) && nowSimTime > o.promisedBy)
+        .map(o => nowSimTime - o.promisedBy),
+    ].sort((a, b) => a - b);
 
     // 3. Orders per trip: deliveries over completed trips (in-progress trips have delivered nothing yet)
     const ordersPerTrip = this.totalCompletedTrips > 0 ? Number((deliveredCount / this.totalCompletedTrips).toFixed(2)) : 1.0;

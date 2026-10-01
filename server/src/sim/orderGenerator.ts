@@ -1,6 +1,7 @@
 import seedrandom from 'seedrandom';
 import { Order, DarkStore } from '../types';
 import { CONFIG } from '../config';
+import { isOnLand } from '../seed/land';
 
 const SKUS = [
   'SKU-MILK-1L', 'SKU-BREAD-WHITE', 'SKU-EGGS-6P', 'SKU-BANANA-1KG',
@@ -38,7 +39,8 @@ export class OrderGenerator {
   private getNextArrivalInterval(): number {
     // Mean arrival interval in sim-seconds. Base: 1 order every 15 sim seconds.
     // If spike is active: 1 order every 5 sim seconds (3x rate).
-    const meanIntervalSec = this.isSpikeActive ? 5 : 15;
+    const baseIntervalSec = 3600 / CONFIG.ORDERS_PER_HOUR; // 240/h -> one order every 15 sim-seconds
+    const meanIntervalSec = this.isSpikeActive ? baseIntervalSec / 3 : baseIntervalSec;
     // Exponential distribution for Poisson process
     const u = this.rng();
     return -Math.log(1 - u) * meanIntervalSec;
@@ -62,17 +64,21 @@ export class OrderGenerator {
         targetStore = stores[Math.floor(this.rng() * stores.length)];
       }
 
-      // Generate customer location within 0.5 - 3.2 km (~0.005 - 0.028 lat/lng degrees) of store
-      const distanceKm = 0.5 + this.rng() * 2.7;
-      const angle = this.rng() * 2 * Math.PI;
-      // 1 deg lat ~ 111km, 1 deg lng ~ 105km at Mumbai latitude
-      const latOffset = (distanceKm / 111.0) * Math.sin(angle);
-      const lngOffset = (distanceKm / 105.0) * Math.cos(angle);
-
-      const customerLoc = {
-        lat: targetStore.loc.lat + latOffset,
-        lng: targetStore.loc.lng + lngOffset,
-      };
+      // Customer 0.5–3.2 km from the store, re-drawn until it falls on land (seeded, so still reproducible)
+      let customerLoc = { lat: targetStore.loc.lat, lng: targetStore.loc.lng };
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const distanceKm = 0.5 + this.rng() * 2.7;
+        const angle = this.rng() * 2 * Math.PI;
+        // 1 deg lat ~ 111km, 1 deg lng ~ 105km at Mumbai latitude
+        const candidate = {
+          lat: targetStore.loc.lat + (distanceKm / 111.0) * Math.sin(angle),
+          lng: targetStore.loc.lng + (distanceKm / 105.0) * Math.cos(angle),
+        };
+        if (isOnLand(candidate)) {
+          customerLoc = candidate;
+          break;
+        }
+      }
 
       // Select 1 to 3 items
       const numItems = 1 + Math.floor(this.rng() * 3);

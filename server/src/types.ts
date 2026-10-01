@@ -10,6 +10,7 @@ export interface DarkStore {
   packingSlots: number;
   packQueue: string[]; // orderIds waiting to be packed or currently packing (FIFO)
   packTimeSec: number;
+  offline?: boolean; // store_offline scenario: takes no new orders, unpicked orders are re-routed
 }
 
 export type RiderStatus = 'idle' | 'to_store' | 'at_store' | 'delivering' | 'returning' | 'offline';
@@ -28,6 +29,7 @@ export interface Rider {
   status: RiderStatus;
   capacity: number;
   homeStoreId: string;
+  originalHomeStoreId?: string; // set while the home store is offline and the rider is lent to another pool
   route: Stop[]; // remaining stops in order
   assignedOrderIds: string[];
   readyAtStoreSince?: number; // sim-time the rider was at the store with every order packed
@@ -174,6 +176,7 @@ export interface StoreSnapshot {
   lat: number;
   lng: number;
   queue: number;
+  offline: boolean;
 }
 
 export interface WorldSnapshot {
@@ -204,4 +207,8 @@ export interface EventPayload {
   message: string;
 }
 
-export type ScenarioName = 'normal' | 'monsoon' | 'spike' | 'riders_offline' | 'stockout' | 'cancel_burst' | 'clear_weather';
+// Contract names: monsoon, store_offline, rider_offline, surge, cancel_burst, stockout, clear.
+// Prototype names (spike, riders_offline, clear_weather) are kept as aliases for the current UI buttons.
+export type ScenarioName =
+  | 'normal' | 'monsoon' | 'store_offline' | 'rider_offline' | 'surge' | 'cancel_burst' | 'stockout' | 'clear'
+  | 'spike' | 'riders_offline' | 'clear_weather';

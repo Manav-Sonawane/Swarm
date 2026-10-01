@@ -1,4 +1,4 @@
-import { DarkStore, LatLng, Order, OrderClass, Stop } from '../types';
+import { DarkStore, LatLng, Order, OrderClass, Rider, Stop } from '../types';
 import { CONFIG } from '../config';
 import { haversineKm, travelTimeSec } from '../sim/travel';
 
@@ -131,6 +131,15 @@ export function permutations<T>(arr: T[]): T[][] {
 // Order classification (USP 0: feasibility honesty)
 // ---------------------------------------------------------------------------
 
+/** Store pools: a rider picks up only at its home store (or nearby stores if RIDER_BORROW_KM > 0). */
+export function canServe(rider: Rider, store: DarkStore, stores: DarkStore[]): boolean {
+  if (store.offline) return false;
+  if (rider.homeStoreId === store.id) return true;
+  if (CONFIG.RIDER_BORROW_KM <= 0) return false;
+  const home = stores.find(s => s.id === rider.homeStoreId);
+  return !!home && haversineKm(home.loc, store.loc) <= CONFIG.RIDER_BORROW_KM;
+}
+
 export function hasStock(store: DarkStore, order: Order): boolean {
   return order.items.every(it => (store.inventory[it.sku] ?? 0) >= it.qty);
 }
@@ -143,7 +152,7 @@ export function hasStock(store: DarkStore, order: Order): boolean {
 export function classifyOrder(order: Order, stores: DarkStore[], now: number, weatherMult: number): void {
   let bestSec = Infinity;
   for (const s of stores) {
-    if (haversineKm(s.loc, order.loc) > CONFIG.GEOFENCE_KM || !hasStock(s, order)) continue;
+    if (s.offline || haversineKm(s.loc, order.loc) > CONFIG.GEOFENCE_KM || !hasStock(s, order)) continue;
     const sec = travelTimeSec(s.loc, order.loc, now, weatherMult) * CONFIG.ETA_RISK_PAD + s.packTimeSec;
     if (sec < bestSec) bestSec = sec;
   }
