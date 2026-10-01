@@ -173,43 +173,55 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({
   ];
 
   return (
-    <div className="glass-medium border border-white/10 rounded-2xl p-5 shadow-glass-md space-y-5 transition-all duration-300">
-      <div className="flex items-center justify-between border-b border-white/10 pb-3">
-        <h3 className="font-mono text-sm font-bold text-white flex items-center space-x-2">
-          <span>📊 3-Way Engine Scorecard (Naive vs Baseline vs Swarm)</span>
-        </h3>
-        <span className="text-[11px] font-mono text-cyan-accent bg-cyan-950/60 border border-cyan-400/40 px-3 py-0.5 rounded-full shadow-[0_0_12px_rgba(103,232,249,0.2)]">
-          Live Divergence Monitor
+    <div className="glass-medium border border-white/10 rounded-2xl p-5 shadow-glass-md space-y-5 transition-all duration-300 relative overflow-hidden">
+      {/* Top interior sheen */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/12 to-transparent" />
+
+      <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
+        <div>
+          <h3 className="text-[0.95rem] font-bold text-white leading-tight tracking-[-0.02em]"
+              style={{ fontFamily: 'var(--font-primary)' }}>
+            3-Way Engine Scorecard
+          </h3>
+          <p className="text-[11px] text-slate-400 mt-0.5" style={{ fontFamily: 'var(--font-primary)' }}>
+            Naive vs Baseline vs Swarm — Live Divergence
+          </p>
+        </div>
+        <span className="text-[10px] font-bold font-mono text-cyan-accent bg-cyan-950/60 border border-cyan-400/40 px-3 py-1 rounded-full shadow-[0_0_12px_rgba(103,232,249,0.2)] tracking-wider uppercase animate-pulse">
+          Live
         </span>
       </div>
 
       {/* Metric Scorecards 3-Way Table */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {metricItems.map((item, idx) => (
           <div
             key={idx}
-            className="glass-light border border-white/10 rounded-xl p-3.5 hover:border-violet-400/30 hover:shadow-[0_0_15px_rgba(124,58,237,0.2)] transition-all duration-300 group hover:-translate-y-0.5"
+            className="glass-light border border-white/[0.08] rounded-xl p-3.5 hover:border-violet-400/30 hover:shadow-[0_0_18px_rgba(124,58,237,0.2)] transition-all duration-300 group hover:-translate-y-0.5 relative overflow-hidden cursor-default"
           >
-            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-              <span className="flex items-center space-x-2 font-medium truncate group-hover:text-slate-200">
-                <span className="transition-transform duration-200 group-hover:scale-110">{item.icon}</span>
-                <span className="truncate">{item.label}</span>
+            {/* Card interior glow on hover */}
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-violet-900/10 to-transparent rounded-xl pointer-events-none" />
+
+            <div className="flex items-start justify-between gap-1 mb-2.5 relative z-10">
+              <span className="flex items-center gap-1.5 text-slate-400 group-hover:text-slate-200 transition-colors duration-200">
+                <span className="transition-transform duration-200 group-hover:scale-110 flex-shrink-0">{item.icon}</span>
+                <span className="text-[11px] font-medium leading-tight" style={{ fontFamily: 'var(--font-primary)' }}>{item.label}</span>
               </span>
-              {item.delta}
+              <span className="flex-shrink-0">{item.delta}</span>
             </div>
 
-            <div className="grid grid-cols-3 gap-1.5 mt-2 pt-2 border-t border-white/[0.08] text-center">
+            <div className="grid grid-cols-3 gap-1 mt-2 pt-2.5 border-t border-white/[0.07] text-center relative z-10">
               <div>
-                <span className="text-[9px] text-slate-400 uppercase font-mono block">Naive</span>
-                <span className="text-xs font-semibold text-slate-300 font-mono">{item.naiveVal}</span>
+                <span className="text-[9px] text-slate-500 uppercase font-mono block tracking-wider leading-none mb-1">Naive</span>
+                <span className="text-[11px] font-semibold text-slate-400 font-mono">{item.naiveVal}</span>
               </div>
-              <div className="border-l border-r border-white/10 px-1">
-                <span className="text-[9px] text-slate-300 uppercase font-mono block">Baseline</span>
-                <span className="text-xs font-bold text-slate-100 font-mono">{item.baseVal}</span>
+              <div className="border-l border-r border-white/[0.08] px-1">
+                <span className="text-[9px] text-slate-400 uppercase font-mono block tracking-wider leading-none mb-1">Base</span>
+                <span className="text-[11px] font-bold text-slate-200 font-mono">{item.baseVal}</span>
               </div>
               <div>
-                <span className="text-[9px] text-cyan-300 uppercase font-mono block font-bold">Swarm ★</span>
-                <span className="text-xs font-black text-cyan-300 font-mono drop-shadow-[0_0_8px_rgba(103,232,249,0.5)]">{item.swarmVal}</span>
+                <span className="text-[9px] text-cyan-400 uppercase font-mono block tracking-wider leading-none mb-1 font-bold">Swarm</span>
+                <span className="text-[11px] font-extrabold text-cyan-300 font-mono drop-shadow-[0_0_8px_rgba(103,232,249,0.5)]">{item.swarmVal}</span>
               </div>
             </div>
           </div>
@@ -217,9 +229,11 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({
       </div>
 
       {/* Live Recharts Line Chart */}
-      <div className="glass-light border border-white/10 rounded-xl p-4">
-        <h4 className="text-xs font-semibold text-slate-200 mb-3 font-mono flex items-center justify-between">
-          <span>📈 On-Time Delivery % Over Sim Time (3 Approaches)</span>
+      <div className="glass-light border border-white/[0.08] rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-[0.8rem] font-bold text-slate-200" style={{ fontFamily: 'var(--font-primary)', letterSpacing: '-0.01em' }}>
+            On-Time Delivery Rate — 3-Approach Live Trend
+          </h4>
           <div className="flex items-center space-x-3 text-[11px]">
             <span className="flex items-center space-x-1">
               <span className="w-2.5 h-2.5 bg-slate-500 rounded-full inline-block" />
@@ -234,7 +248,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({
               <span className="text-cyan-300 font-bold">Swarm ★</span>
             </span>
           </div>
-        </h4>
+        </div>
 
         <div className="h-44 w-full">
           <ResponsiveContainer width="100%" height="100%">

@@ -24,7 +24,10 @@ export const SimControls: React.FC<SimControlsProps> = ({
   };
 
   return (
-    <div className="glass-medium border border-white/10 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-4 shadow-glass-md transition-all duration-300">
+    <div className="glass-medium border border-white/10 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-4 shadow-glass-md transition-all duration-300 relative overflow-hidden">
+      {/* Top sheen */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
       {/* Play/Pause & Reset */}
       <div className="flex items-center space-x-2.5">
         <button
@@ -100,7 +103,7 @@ export const SimControls: React.FC<SimControlsProps> = ({
               type="number"
               value={seedInput}
               onChange={(e) => setSeedInput(Number(e.target.value))}
-              className="w-24 pl-8 pr-2.5 py-2 bg-black/50 border border-white/10 rounded-xl text-xs font-mono text-lavender-200 focus:outline-none focus:border-violet-400/50 shadow-inner"
+              className="glass-input w-24 pl-8"
               placeholder="Seed"
             />
           </div>
