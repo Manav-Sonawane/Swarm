@@ -3,6 +3,8 @@ import { World, isTerminal } from './sim/world';
 import { OrderGenerator } from './sim/orderGenerator';
 import { ScenarioName, EventPayload } from './types';
 import { CONFIG } from './config';
+import { setTrafficJam } from './sim/travel';
+import { TrafficJam } from './types';
 
 const SPIKE_DURATION_SEC = 600;
 
@@ -11,6 +13,7 @@ export class ScenarioEngine {
   private spikeEndsAt: number = -Infinity;
   private rng: seedrandom.PRNG = seedrandom('swarm-scenario-0');
   private offlineStoreIds: string[] = [];
+  private jam: TrafficJam | null = null;
 
   constructor(seed: number = CONFIG.DEFAULT_SEED) {
     this.reset(seed);
@@ -21,6 +24,8 @@ export class ScenarioEngine {
     this.weatherMult = 1.0;
     this.spikeEndsAt = -Infinity;
     this.offlineStoreIds = [];
+    this.jam = null;
+    setTrafficJam(null);
     this.rng = seedrandom(`swarm-scenario-${seed}`);
   }
 
@@ -28,8 +33,13 @@ export class ScenarioEngine {
   public getActiveScenario(nowSimTime: number): ScenarioName {
     if (nowSimTime < this.spikeEndsAt) return 'spike';
     if (this.weatherMult < 1.0) return 'monsoon';
+    if (this.jam) return 'traffic_jam';
     if (this.offlineStoreIds.length > 0) return 'store_offline';
     return 'normal';
+  }
+
+  public getTrafficJam(): TrafficJam | null {
+    return this.jam;
   }
 
   public getWeatherMult(): number {
@@ -61,7 +71,10 @@ export class ScenarioEngine {
         let restored = 0;
         for (const world of worlds) restored = world.restoreStores();
         this.offlineStoreIds = [];
-        ev('SCENARIO_CLEAR', `☀️ All clear: normal weather${restored ? `, ${restored} store(s) back online` : ''}.`);
+        const hadJam = !!this.jam;
+        this.jam = null;
+        setTrafficJam(null);
+        ev('SCENARIO_CLEAR', `☀️ All clear: normal weather${hadJam ? ', traffic flowing' : ''}${restored ? `, ${restored} store(s) back online` : ''}.`);
         break;
       }
       case 'store_offline': {
@@ -84,6 +97,16 @@ export class ScenarioEngine {
         ev('SCENARIO_STORE_OFFLINE', `🏚️ ${name} went offline. ${rerouted} unpicked order(s) re-served from the next-nearest store across worlds, ${failed} failed (items unavailable nearby); its ${lent} riders join the nearest store.`);
         break;
       }
+      case 'traffic_jam': {
+        // Gridlock around one store (seeded pick, same in every world): travel inside the circle takes JAM_MULTIPLIER x
+        const online = worlds[0].stores.filter(st => !st.offline).sort((a, b) => a.id.localeCompare(b.id));
+        const st = online[Math.floor(this.rng() * online.length)];
+        if (!st) break;
+        this.jam = { storeId: st.id, name: st.name.replace(' Dark Store', ''), lat: st.loc.lat, lng: st.loc.lng, radiusKm: CONFIG.JAM_RADIUS_KM, mult: CONFIG.JAM_MULTIPLIER };
+        setTrafficJam({ center: { ...st.loc }, radiusKm: CONFIG.JAM_RADIUS_KM, mult: CONFIG.JAM_MULTIPLIER });
+        ev('SCENARIO_TRAFFIC_JAM', `🚧 Gridlock around ${this.jam.name}: travel within ${CONFIG.JAM_RADIUS_KM} km takes ${CONFIG.JAM_MULTIPLIER}x as long. Swarm re-plans and re-sequences drops.`);
+        break;
+      }
       case 'spike': {
         orderGen.triggerSpike(nowSimTime, SPIKE_DURATION_SEC);
         this.spikeEndsAt = nowSimTime + SPIKE_DURATION_SEC;
@@ -94,7 +117,7 @@ export class ScenarioEngine {
         // Pick riders that are online in every world, with the seeded RNG, so all worlds lose the same riders
         const candidates = worlds[0].riders
           .map(r => r.id)
-          .filter(id => worlds.every(w => w.riders.find(r => r.id === id)!.status !== 'offline'))
+          .filter(id => worlds.every(w => !['offline', 'off_shift'].includes(w.riders.find(r => r.id === id)!.status)))
           .sort();
         const picked: string[] = [];
         for (let i = 0; i < 3 && candidates.length > 0; i++) {
@@ -102,7 +125,7 @@ export class ScenarioEngine {
         }
 
         let released = 0;
-        let failed = 0;
+        let stranded = 0;
         for (const world of worlds) {
           for (const id of picked) {
             const rider = world.riders.find(r => r.id === id)!;
@@ -110,8 +133,8 @@ export class ScenarioEngine {
               const o = world.ordersMap.get(oid);
               if (!o || isTerminal(o)) continue;
               if (o.status === 'picked') {
-                world.endOrder(o, 'failed', nowSimTime, `rider ${id} went offline mid-delivery`); // goods are with the rider
-                failed++;
+                world.strandOrder(o, rider.loc, nowSimTime, id); // goods are safe at the roadside: another rider collects them
+                stranded++;
               } else {
                 world.releaseOrder(o); // back to the pool for re-allocation (re-packed)
                 released++;
@@ -123,7 +146,7 @@ export class ScenarioEngine {
           }
         }
 
-        ev('SCENARIO_RIDERS_OFFLINE', `🛵 ${picked.join(', ')} went offline mid-shift. Unpicked orders released for re-allocation (${released} across worlds); ${failed} picked order(s) failed.`);
+        ev('SCENARIO_RIDERS_OFFLINE', `🛵 ${picked.join(', ')} went offline mid-shift. Unpicked orders released for re-allocation (${released} across worlds); ${stranded} picked order(s) held at the roadside for a handover.`);
         break;
       }
       case 'stockout': {

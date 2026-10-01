@@ -1,10 +1,10 @@
-import { DarkStore, Rider, Order, Assignment, WorldSnapshot, RiderSnapshot, OrderSnapshot, StoreSnapshot, WorldName, EventPayload } from '../types';
+import { DarkStore, Rider, Order, Assignment, WorldSnapshot, RiderSnapshot, OrderSnapshot, StoreSnapshot, WorldName, EventPayload, LatLng, Stop } from '../types';
 import { generateSeedStores } from '../seed/stores';
 import { generateSeedRiders } from '../seed/riders';
-import { routeDistanceKm, getTrafficMultiplier, travelTimeSec, haversineKm } from './travel';
+import { routeDistanceKm, getTrafficMultiplier, travelTimeSec, haversineKm, jamTimeFactor } from './travel';
 import { MetricsEngine } from '../metrics';
 import { CONFIG } from '../config';
-import { DropSpec, QueueForecast, forecastQueue, planTrip } from '../alloc/feasibility';
+import { DropSpec, QueueForecast, forecastQueue, planTrip, permutations } from '../alloc/feasibility';
 import { servingStoreFor } from './store-select';
 import { orderPackingQueue } from '../alloc/packing';
 
@@ -27,9 +27,23 @@ function withShiftHistory(riders: Rider[], startSimTime: number): Rider[] {
   riders.forEach((r, i) => {
     const prior = (i * 5 + 3) % 6;
     r.stats.deliveryTimes = Array.from({ length: prior }, (_, k) => startSimTime - ((k + 1) * CONFIG.FATIGUE_WINDOW_SEC) / (prior + 1));
+
+    // Shifts. all_evening: everyone on until 23:00. staggered: per store, the last rider joins at 19:30 for the
+    // peak and the first clocks out at 20:30 (after finishing the trip in hand).
+    const k = i % CONFIG.RIDERS_PER_STORE;
+    r.shiftStartsAt = startSimTime - 3 * 3600;
+    r.shiftEndsAt = startSimTime + 4 * 3600;
+    if (CONFIG.SHIFT_PATTERN === 'staggered' && CONFIG.RIDERS_PER_STORE >= 2) {
+      if (k === CONFIG.RIDERS_PER_STORE - 1) r.shiftStartsAt = startSimTime + 1800;
+      if (k === 0) r.shiftEndsAt = startSimTime + 5400;
+    }
+    if (r.shiftStartsAt > startSimTime) r.status = 'off_shift'; // not clocked in yet: show it from the first frame
   });
   return riders;
 }
+
+// A roadside handover point behaves like a store with nothing left to pack
+const handoverPoint = (loc: LatLng): DarkStore => ({ id: 'handover', name: 'Roadside handover', loc, packingSlots: 1, packQueue: [], packTimeSec: 0 });
 
 export class World {
   public name: WorldName;
@@ -127,6 +141,7 @@ export class World {
     order.pickedAt = undefined;
     order.tripSize = undefined;
     order.holdUntil = undefined;
+    order.handoverLoc = undefined;
   }
 
   /** Terminal failure (or cancellation): removes the order from queues and trips. */
@@ -188,7 +203,7 @@ export class World {
     let rerouted = 0;
     let failed = 0;
     this.ordersMap.forEach(o => {
-      if (o.servingStoreId !== storeId || !['placed', 'assigned', 'packing', 'packed'].includes(o.status)) return;
+      if (o.servingStoreId !== storeId || o.handoverLoc || !['placed', 'assigned', 'packing', 'packed'].includes(o.status)) return;
       if (o.status !== 'placed') this.releaseOrder(o);
       const tried = new Set<string>();
       let next = servingStoreFor(o.loc, this.stores, tried);
@@ -216,6 +231,76 @@ export class World {
       lentRiders++;
     }
     return { rerouted, failed, lentRiders };
+  }
+
+  /**
+   * A rider dropped out mid-delivery: the goods are packed and safe, just stuck at the roadside. The order waits
+   * there for another rider (dispatchHandovers) instead of failing.
+   */
+  public strandOrder(order: Order, loc: LatLng, now: number, fromRiderId: string): void {
+    order.status = 'packed';
+    order.riderId = undefined;
+    order.handoverLoc = { ...loc };
+    this.events.push({ simTime: now, world: this.name, kind: 'ORDER_STRANDED', message: `🧳 ${order.id}: ${fromRiderId} dropped out mid-delivery. Goods held at the roadside for a handover.` });
+  }
+
+  /** Sends the nearest free rider (own pool first, else anyone within 4 km) to collect each stranded order. */
+  private dispatchHandovers(now: number, weatherMult: number): void {
+    this.ordersMap.forEach(o => {
+      if (!o.handoverLoc || o.riderId || o.status !== 'packed') return;
+      const free = this.riders.filter(r => (r.status === 'idle' || r.status === 'returning') && r.assignedOrderIds.length === 0);
+      const byDist = (pool: Rider[]) => pool
+        .map(r => ({ r, d: haversineKm(r.loc, o.handoverLoc!) }))
+        .sort((a, b) => a.d - b.d || a.r.id.localeCompare(b.r.id))[0];
+      const pick = byDist(free.filter(r => r.homeStoreId === o.storeId)) ?? byDist(free.filter(r => haversineKm(r.loc, o.handoverLoc!) <= 4));
+      if (!pick) return;
+      const rider = pick.r;
+      const plan = planTrip(rider.loc, now, handoverPoint(o.handoverLoc), now, [{ orderId: o.id, loc: o.loc, promisedBy: o.promisedBy }], weatherMult);
+      o.riderId = rider.id;
+      o.assignedAt = now;
+      rider.assignedOrderIds = [o.id];
+      rider.route = plan.stops.map(st => (st.type === 'pickup' ? { ...st, storeId: undefined } : st));
+      rider.status = 'to_store';
+      this.metricsEngine.handovers += 1;
+      this.events.push({ simTime: now, world: this.name, kind: 'ORDER_HANDOVER', message: `🤝 ${o.id} handed over: ${rider.id} rides ${pick.d.toFixed(1)} km to collect it at the roadside.` });
+    });
+  }
+
+  /**
+   * Swarm: for riders already out delivering, re-check the order of the remaining drops against the current
+   * traffic and weather, and switch to a better sequence when it cuts lateness (or total time) noticeably.
+   */
+  public resequenceDeliveries(now: number, weatherMult: number): void {
+    for (const rider of this.riders) {
+      if (rider.status !== 'delivering' || rider.route.length < 2 || rider.route.length > 4) continue;
+      if (!rider.route.every(st => st.type === 'drop')) continue;
+      const drops = this.dropsOf(rider);
+      if (drops.length !== rider.route.length) continue;
+      const score = (seq: DropSpec[]) => {
+        const p = planTrip(rider.loc, now, null, now, seq, weatherMult);
+        let late = 0;
+        for (const d of seq) late += Math.max(0, p.dropEtas.get(d.orderId)! - d.promisedBy);
+        return { p, late, end: Math.max(...p.dropEtas.values()) };
+      };
+      const cur = score(drops);
+      let best = cur;
+      for (const perm of permutations(drops)) {
+        const s = score(perm);
+        if (s.late < best.late - 1e-6 || (Math.abs(s.late - best.late) < 1e-6 && s.end < best.end)) best = s;
+      }
+      const lateGain = cur.late - best.late;
+      const timeGain = cur.end - best.end;
+      if (lateGain >= CONFIG.REROUTE_MIN_GAIN_SEC || (lateGain >= 0 && timeGain >= CONFIG.REROUTE_MIN_GAIN_SEC)) {
+        rider.route = best.p.stops.map((st): Stop => ({ ...st, loc: { ...st.loc } }));
+        this.metricsEngine.reroutes += 1;
+        this.events.push({
+          simTime: now,
+          world: this.name,
+          kind: 'ORDER_REROUTED',
+          message: `🧭 ${rider.id} re-sequenced its ${drops.length} drops: ${lateGain >= 1 ? fmtDur(lateGain) + ' less lateness' : fmtDur(timeGain) + ' sooner'}.`,
+        });
+      }
+    }
   }
 
   /** Brings every offline store back and returns lent riders to their own pools. */
@@ -264,9 +349,19 @@ export class World {
       }
     }
 
-    // 2. Riders & movement
+    // 2. Roadside handovers, then riders & movement
+    this.dispatchHandovers(nowSimTime, weatherMult);
     for (const rider of this.riders) {
       if (rider.status === 'offline') continue;
+
+      // Shifts: before clock-in, or after clock-out once the trip in hand is finished, the rider takes no work
+      const onShift = nowSimTime >= rider.shiftStartsAt && nowSimTime < rider.shiftEndsAt;
+      if (!onShift && rider.assignedOrderIds.length === 0) {
+        rider.status = 'off_shift';
+        rider.route = [];
+        continue;
+      }
+      if (rider.status === 'off_shift') rider.status = 'idle';
       if (rider.status !== 'idle') rider.stats.activeSec += dtSimSec;
 
       if (rider.route.length === 0) {
@@ -276,7 +371,7 @@ export class World {
         if (homeStore && haversineKm(rider.loc, homeStore.loc) > 0.3) {
           rider.status = 'returning';
           const distKm = routeDistanceKm(rider.loc, homeStore.loc);
-          const speedKmh = Math.max(5, CONFIG.BASE_SPEED_KMH * getTrafficMultiplier(nowSimTime) * weatherMult);
+          const speedKmh = Math.max(5, CONFIG.BASE_SPEED_KMH * getTrafficMultiplier(nowSimTime) * weatherMult) / jamTimeFactor(rider.loc, homeStore.loc);
           const moveDistKm = (speedKmh * dtSimSec) / 3600;
           const stepFrac = Math.min(1.0, moveDistKm / Math.max(0.001, distKm));
           rider.loc.lat += (homeStore.loc.lat - rider.loc.lat) * stepFrac;
@@ -289,7 +384,7 @@ export class World {
 
       const nextStop = rider.route[0];
       const distKm = routeDistanceKm(rider.loc, nextStop.loc);
-      const speedKmh = Math.max(5, CONFIG.BASE_SPEED_KMH * getTrafficMultiplier(nowSimTime, rider.homeStoreId) * weatherMult);
+      const speedKmh = Math.max(5, CONFIG.BASE_SPEED_KMH * getTrafficMultiplier(nowSimTime, rider.homeStoreId) * weatherMult) / jamTimeFactor(rider.loc, nextStop.loc);
       const maxMoveKm = (speedKmh * dtSimSec) / 3600;
 
       if (distKm <= maxMoveKm || distKm < 0.02) {
@@ -305,8 +400,9 @@ export class World {
               const o = this.ordersMap.get(id);
               if (o && o.status === 'packed') {
                 o.status = 'picked';
-                o.pickedAt = nowSimTime;
-                o.tripSize = rider.assignedOrderIds.length;
+                o.pickedAt ??= nowSimTime;
+                o.tripSize ??= rider.assignedOrderIds.length;
+                o.handoverLoc = undefined;
               }
             }
             rider.route.shift();
@@ -399,7 +495,7 @@ export class World {
       let store: DarkStore | null = null;
       let readyAt = now;
       if (rider.route[0].type === 'pickup') {
-        store = this.stores.find(s => s.id === rider.route[0].storeId) ?? null;
+        store = rider.route[0].storeId ? this.stores.find(s => s.id === rider.route[0].storeId) ?? null : handoverPoint(rider.route[0].loc);
         for (const id of rider.assignedOrderIds) {
           const o = this.ordersMap.get(id);
           if (!o || !store || o.status === 'packed' || o.status === 'picked' || isTerminal(o)) continue;
@@ -419,7 +515,9 @@ export class World {
       if (eta === undefined) {
         // Unassigned: the serving store's packing delay + travel
         const s = this.stores.find(st => st.id === order.servingStoreId);
-        eta = s && !s.offline
+        eta = order.handoverLoc
+          ? now + 2 * travelTimeSec(order.handoverLoc, order.loc, now, weatherMult)
+          : s && !s.offline
           ? fc(s).nextFinishAt(0) + travelTimeSec(s.loc, order.loc, now, weatherMult)
           : Math.max(now, order.promisedBy) + 1;
       }
@@ -464,6 +562,8 @@ export class World {
       riderHomeStoreId: riderHome.get(o.riderId ?? ''),
       failReason: o.failReason,
       items: o.items,
+      handover: !!o.handoverLoc,
+      manual: !!o.manual,
     }));
 
     const riders: RiderSnapshot[] = this.riders.map(r => ({
@@ -475,6 +575,8 @@ export class World {
       routeLine: [[r.loc.lat, r.loc.lng] as [number, number], ...r.route.map(st => [st.loc.lat, st.loc.lng] as [number, number])],
       homeStoreId: r.homeStoreId,
       deliveries: r.stats.delivered,
+      shiftStartsAt: r.shiftStartsAt,
+      shiftEndsAt: r.shiftEndsAt,
     }));
 
     const stores: StoreSnapshot[] = this.stores.map(s => ({

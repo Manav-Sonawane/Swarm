@@ -98,16 +98,20 @@ export function getOrderItems(
   return items;
 }
 
+/** Display name and unit price for a catalogue SKU. */
+export function skuInfo(sku: string): { name: string; price: number } {
+  return SKU_CATALOG[sku] ?? { name: sku.replace('SKU-', '').replace(/-/g, ' ').toLowerCase(), price: 50 };
+}
+
+/** The orderable SKUs, in catalogue order. */
+export const ORDERABLE_SKUS = Object.keys(SKU_CATALOG);
+
+const RIDER_FIRST = ['Akshay', 'Sachin', 'Ramesh', 'Deepak', 'Sunil', 'Vijay', 'Pravin', 'Manoj', 'Imran', 'Ganesh', 'Salim', 'Raju', 'Kiran', 'Nitin', 'Faisal', 'Sagar', 'Anil', 'Tushar', 'Javed', 'Mahesh'];
+const RIDER_LAST = 'KTPSVMGDNRBHJLC';
+
+/** Stable, human name for a rider id (rider-12 -> "Imran N."). */
 export function getRiderName(riderId: string): string {
-  const RIDER_NAMES: Record<string, string> = {
-    'rider-1': 'Akshay K.',
-    'rider-2': 'Sachin T.',
-    'rider-3': 'Ramesh P.',
-    'rider-4': 'Deepak S.',
-    'rider-5': 'Sunil V.',
-    'rider-6': 'Vijay M.',
-    'rider-7': 'Pravin G.',
-    'rider-8': 'Manoj D.',
-  };
-  return RIDER_NAMES[riderId] || `Rider ${riderId.replace(/[^0-9]/g, '') || riderId}`;
+  const n = parseInt(riderId.replace(/[^0-9]/g, ''), 10);
+  if (!Number.isFinite(n)) return riderId;
+  return `${RIDER_FIRST[(n * 7) % RIDER_FIRST.length]} ${RIDER_LAST[(n * 3) % RIDER_LAST.length]}.`;
 }

@@ -10,6 +10,8 @@ export class MetricsEngine {
   private decisionCalls = 0;
   private decisionMsMax = 0;
   public reassignments = 0;
+  public handovers = 0;
+  public reroutes = 0;
 
   public incrementCompletedTrips(count: number = 1): void {
     this.totalCompletedTrips += count;
@@ -29,6 +31,8 @@ export class MetricsEngine {
     this.decisionCalls = 0;
     this.decisionMsMax = 0;
     this.reassignments = 0;
+    this.handovers = 0;
+    this.reroutes = 0;
   }
 
   public calculateMetrics(
@@ -126,6 +130,8 @@ export class MetricsEngine {
       ordersRejected: rejectedCount,
       kmTotal: Number(kmTotal.toFixed(1)),
       reassignments: this.reassignments,
+      handovers: this.handovers,
+      reroutes: this.reroutes,
       decisionMsAvg: this.decisionCalls ? Number((this.decisionMsSum / this.decisionCalls).toFixed(2)) : 0,
       decisionMsMax: Number(this.decisionMsMax.toFixed(2)),
       ordersByClass,

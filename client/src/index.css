@@ -2,568 +2,177 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ============================================================
-   SWARM DESIGN SYSTEM — Premium Liquid Glass Foundation
-   ============================================================ */
-
-/* ---- CSS Custom Properties ---- */
+/* Swarm control room: a night-shift dispatch console. Graphite surfaces, one marigold brand accent,
+   and a fixed color per dispatcher everywhere: Swarm teal, Baseline coral, Naive violet
+   (checked for color-blind separation on the dark surface). */
 :root {
-  /* Background environment */
-  --bg-base: #03020a;
-  --bg-surface: #07060f;
-
-  /* Atmospheric light positions (updated by scroll/cursor JS) */
-  --atm-x1: 25%;
-  --atm-y1: -10%;
-  --atm-x2: 75%;
-  --atm-y2: 35%;
-  --atm-x3: 40%;
-  --atm-y3: 80%;
-  --atm-intensity: 1;
-  --scroll-progress: 0;
-
-  /* Cursor glow */
-  --cursor-x: 50%;
-  --cursor-y: 50%;
-
-  /* Glass levels */
-  --glass-bg-light:    rgba(255, 255, 255, 0.04);
-  --glass-bg-medium:   rgba(255, 255, 255, 0.07);
-  --glass-bg-heavy:    rgba(255, 255, 255, 0.10);
-  --glass-border:      rgba(255, 255, 255, 0.10);
-  --glass-border-bright: rgba(255, 255, 255, 0.18);
-
-  /* Purple light accent */
-  --glow-violet:   rgba(124, 58, 237, 0.4);
-  --glow-purple:   rgba(168, 85, 247, 0.3);
-  --glow-lavender: rgba(196, 181, 253, 0.2);
-  --glow-cyan:     rgba(103, 232, 249, 0.35);
-
-  /* Typography */
-  --font-primary: "Plus Jakarta Sans", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --bg: 9 12 17;
+  --panel: 14 19 26;
+  --raise: 20 27 36;
+  --lift: 27 36 48;
+  --line: 33 43 56;
+  --edge: 46 59 76;
+  --ink: 232 238 245;
+  --mute: 148 162 179;
+  --dim: 96 110 128;
+  --brand: 246 183 60;
+  --swarm: 18 163 155;
+  --base: 229 96 79;
+  --naive: 138 127 214;
+  --good: 52 224 161;
+  --bad: 255 91 112;
+  --warn: 255 162 58;
+  --info: 90 184 255;
+  --jam: 255 138 61;
+  --plum: 232 121 168;
+  --topbar: 3.5rem;
+  color-scheme: dark;
 }
 
-/* ---- Base Reset ---- */
 @layer base {
-  *, *::before, *::after {
-    box-sizing: border-box;
+  html,
+  body,
+  #root {
+    height: 100%;
   }
-
-  html {
-    scroll-behavior: smooth;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
-  }
-
   body {
-    background-color: var(--bg-base);
-    color: #e2e8f0;
-    font-family: var(--font-primary);
-    font-size: 16px;
-    line-height: 1.6;
-    overflow-x: hidden;
-    min-height: 100vh;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    background: rgb(var(--bg));
+    color: rgb(var(--ink));
+    font-family: Geist, 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
   }
-
-  /* Global selection */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
   ::selection {
-    background-color: rgba(124, 58, 237, 0.3);
-    color: #fff;
+    background: rgb(var(--brand) / 0.35);
   }
-
-  /* Custom scrollbar */
+  :focus-visible {
+    outline: 2px solid rgb(var(--brand));
+    outline-offset: 2px;
+  }
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.02);
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.35);
-    border-radius: 999px;
+    background: rgb(var(--edge));
+    border-radius: 99px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(139, 92, 246, 0.55);
-  }
-
-  /* Headings base */
-  h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-primary);
-    font-weight: 700;
-    line-height: 1.1;
-    letter-spacing: -0.02em;
-  }
-
-  /* Mono text */
-  code, pre, .font-mono {
-    font-family: var(--font-mono);
-    font-feature-settings: "liga" 0;
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
 }
 
-/* ============================================================
-   GLASS COMPONENT UTILITIES
-   ============================================================ */
 @layer components {
-
-  /* ---- Glass Surface Levels ---- */
-  .glass-light {
-    background: var(--glass-bg-light);
-    backdrop-filter: blur(12px) saturate(1.4);
-    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  .panel {
+    @apply rounded-2xl border border-line bg-panel;
   }
-
-  .glass-medium {
-    background: var(--glass-bg-medium);
-    backdrop-filter: blur(20px) saturate(1.6);
-    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  .eyebrow {
+    @apply font-mono text-2xs uppercase tracking-[0.12em] text-dim;
   }
-
-  .glass-heavy {
-    background: var(--glass-bg-heavy);
-    backdrop-filter: blur(32px) saturate(1.8);
-    -webkit-backdrop-filter: blur(32px) saturate(1.8);
+  .num {
+    font-variant-numeric: tabular-nums;
   }
-
-  /* ---- Glass Cards ---- */
-  .glass-card {
-    background: var(--glass-bg-medium);
-    backdrop-filter: blur(20px) saturate(1.6);
-    -webkit-backdrop-filter: blur(20px) saturate(1.6);
-    border: 1px solid var(--glass-border);
-    border-radius: 16px;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
-    position: relative;
-    overflow: hidden;
+  .btn {
+    @apply inline-flex h-9 items-center gap-2 rounded-xl border border-line bg-raise px-3 text-[13px] font-medium text-ink transition-[background,border-color,transform] duration-150 hover:border-edge hover:bg-lift active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
   }
-
-  .glass-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 50%);
-    pointer-events: none;
-    border-radius: inherit;
+  .btn-brand {
+    @apply border-transparent bg-brand font-semibold text-[#1b1406] hover:bg-brand/90 hover:border-transparent;
   }
-
-  .glass-card-heavy {
-    background: var(--glass-bg-heavy);
-    backdrop-filter: blur(32px) saturate(1.8);
-    -webkit-backdrop-filter: blur(32px) saturate(1.8);
-    border: 1px solid rgba(255,255,255,0.14);
-    border-radius: 20px;
-    box-shadow: 0 16px 64px rgba(0,0,0,0.55), 
-                0 0 0 1px rgba(255,255,255,0.04),
-                inset 0 1px 0 rgba(255,255,255,0.12);
-    position: relative;
-    overflow: hidden;
+  .btn-ghost {
+    @apply border-transparent bg-transparent hover:bg-raise hover:border-line;
   }
-
-  .glass-card-heavy::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 40%);
-    pointer-events: none;
-    border-radius: inherit;
+  .seg {
+    @apply inline-flex rounded-xl border border-line bg-bg p-0.5;
   }
-
-  /* ---- Glass Sheen (top highlight line) ---- */
-  .glass-sheen::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 10%;
-    right: 10%;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
-    pointer-events: none;
-    border-radius: 50%;
+  .seg > button {
+    @apply h-8 rounded-[10px] px-3 text-[12.5px] font-medium text-mute transition-colors duration-150 hover:text-ink;
   }
-
-  /* ---- Glass Button ---- */
-  .glass-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: var(--glass-bg-medium);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--glass-border);
-    border-radius: 12px;
-    color: #e2e8f0;
-    font-family: var(--font-primary);
-    font-weight: 600;
-    font-size: 0.8125rem;
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06);
+  .seg > button[aria-pressed='true'] {
+    @apply bg-lift text-ink shadow-[inset_0_0_0_1px_rgb(var(--edge))];
   }
-
-  .glass-btn:hover {
-    background: rgba(255,255,255,0.10);
-    border-color: rgba(139,92,246,0.4);
-    color: #fff;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.4), 0 0 20px rgba(139,92,246,0.2), inset 0 1px 0 rgba(255,255,255,0.10);
-    transform: translateY(-1px);
+  .chip {
+    @apply inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-[11.5px] font-medium;
   }
-
-  .glass-btn:active {
-    transform: scale(0.96);
+  .field {
+    @apply h-9 w-full rounded-xl border border-line bg-bg px-3 text-[13px] text-ink outline-none transition-colors placeholder:text-dim focus:border-brand/70;
   }
-
-  /* ---- Primary CTA Button ---- */
-  .glass-btn-primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 50%, #8b5cf6 100%);
-    border: 1px solid rgba(139,92,246,0.5);
-    border-radius: 12px;
-    color: #fff;
-    font-family: var(--font-primary);
-    font-weight: 700;
-    font-size: 0.8125rem;
-    padding: 0.5rem 1.25rem;
-    cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
-    box-shadow: 0 0 20px rgba(124,58,237,0.45), 0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.15);
-    position: relative;
-    overflow: hidden;
-  }
-
-  .glass-btn-primary::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 50%);
-    border-radius: inherit;
-    pointer-events: none;
-  }
-
-  .glass-btn-primary:hover {
-    background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 50%, #a78bfa 100%);
-    box-shadow: 0 0 32px rgba(124,58,237,0.6), 0 6px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.2);
-    transform: translateY(-1px);
-  }
-
-  .glass-btn-primary:active {
-    transform: scale(0.96);
-  }
-
-  /* ---- Shadow Utilities ---- */
-  .shadow-glass-sm {
-    box-shadow: 0 2px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
-  }
-
-  .shadow-glass-md {
-    box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.08);
-  }
-
-  .shadow-glass-lg {
-    box-shadow: 0 16px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05), inset 0 1px 0 rgba(255,255,255,0.10);
-  }
-
-  /* ---- Glow Text ---- */
-  .text-glow-violet {
-    text-shadow: 0 0 20px rgba(139,92,246,0.6), 0 0 50px rgba(139,92,246,0.3);
-  }
-
-  .text-glow-cyan {
-    text-shadow: 0 0 20px rgba(103,232,249,0.6), 0 0 50px rgba(103,232,249,0.25);
-  }
-
-  /* ---- Purple Glow Border ---- */
-  .border-glow-violet {
-    border-color: rgba(139,92,246,0.5);
-    box-shadow: 0 0 16px rgba(139,92,246,0.3), inset 0 0 12px rgba(139,92,246,0.05);
-  }
-
-  /* ---- Typography Utilities ---- */
-  .type-display {
-    font-family: var(--font-primary);
-    font-size: clamp(4rem, 8vw, 9rem);
-    font-weight: 800;
-    line-height: 0.92;
-    letter-spacing: -0.04em;
-  }
-
-  .type-major {
-    font-family: var(--font-primary);
-    font-size: clamp(2.8rem, 5vw, 5.5rem);
-    font-weight: 800;
-    line-height: 0.95;
-    letter-spacing: -0.03em;
-  }
-
-  .type-section {
-    font-family: var(--font-primary);
-    font-size: clamp(1.5rem, 2.5vw, 2.5rem);
-    font-weight: 700;
-    line-height: 1.1;
-    letter-spacing: -0.02em;
-  }
-
-  .type-label {
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  /* ---- Gradient Text ---- */
-  .text-gradient-violet {
-    background: linear-gradient(135deg, #fff 0%, #c4b5fd 50%, #a78bfa 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-
-  .text-gradient-cyan {
-    background: linear-gradient(135deg, #67e8f9 0%, #22d3ee 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-
-  /* ---- Accent colors (shorthand) ---- */
-  .text-cyan-accent { color: #67e8f9; }
-  .text-lavender-300 { color: #c4b5fd; }
-  .text-lavender-200 { color: #ddd6fe; }
-  .text-lavender-400 { color: #a78bfa; }
-
-  /* ---- Divider ---- */
-  .divider-glass {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
-    border: none;
-    margin: 0;
-  }
-
-  /* ---- Magnetic button wrapper ---- */
-  .magnetic {
-    transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
-  }
-
-  /* ---- Animate-in utilities ---- */
-  .animate-fade-in {
-    animation: fade-in 0.4s ease-out forwards;
-  }
-
-  .animate-slide-up {
-    animation: slide-up 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
-  }
-
-  /* ---- Cursor glow overlay ---- */
-  .cursor-glow {
-    pointer-events: none;
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    z-index: 1;
-    background: radial-gradient(
-      circle 300px at var(--cursor-x) var(--cursor-y),
-      rgba(124, 58, 237, 0.06) 0%,
-      transparent 70%
-    );
-    transition: background 0.1s ease;
+  .screen {
+    @apply animate-rise;
   }
 }
 
-/* ============================================================
-   KEYFRAMES
-   ============================================================ */
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes slide-up {
-  from { opacity: 0; transform: translateY(20px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50%       { transform: translateY(-18px); }
-}
-
-@keyframes pulse-glow {
-  0%, 100% { opacity: 0.6; }
-  50%       { opacity: 1; }
-}
-
-@keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-/* ============================================================
-   LEAFLET MAP
-   ============================================================ */
+/* ---------------------------------------------------------------- maps */
 .leaflet-container {
-  background-color: #07060f !important;
-  font-family: var(--font-mono);
-  isolation: isolate;
+  background: rgb(var(--bg)) !important;
+  font-family: inherit;
+  isolation: isolate; /* keep Leaflet's z-indexes (400-1000) inside the map */
   z-index: 0;
 }
-
-.leaflet-tile {
-  filter: brightness(0.65) invert(1) contrast(1.2) hue-rotate(200deg) saturate(0.25) !important;
+/* Standard OSM tiles turned into a quiet night map (dark basemaps need an API key) */
+.leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(1.05) contrast(0.85) saturate(0.35);
 }
-
 .leaflet-control-zoom {
-  border: 1px solid rgba(255,255,255,0.12) !important;
-  background: rgba(7,6,15,0.85) !important;
-  backdrop-filter: blur(12px) !important;
-  border-radius: 10px !important;
-  overflow: hidden;
-}
-
-.leaflet-control-zoom a {
-  background: transparent !important;
-  color: #c4b5fd !important;
-  border-color: rgba(255,255,255,0.08) !important;
-  font-size: 14px;
-  transition: background 0.15s, color 0.15s;
-}
-
-.leaflet-control-zoom a:hover {
-  background: rgba(139,92,246,0.15) !important;
-  color: #fff !important;
-}
-
-/* ============================================================
-   RANGE INPUT STYLING
-   ============================================================ */
-input[type='range'] {
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
-  cursor: pointer;
-}
-
-input[type='range']::-webkit-slider-runnable-track {
-  background: rgba(139, 92, 246, 0.25);
-  border-radius: 999px;
-  height: 4px;
-}
-
-input[type='range']::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #8b5cf6;
-  margin-top: -5px;
-  box-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
-  transition: transform 0.15s;
-}
-
-input[type='range']:hover::-webkit-slider-thumb {
-  transform: scale(1.2);
-}
-
-/* ============================================================
-   NUMBER INPUT STYLING
-   ============================================================ */
-input[type='number']::-webkit-outer-spin-button,
-input[type='number']::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-input[type='number'] {
-  -moz-appearance: textfield;
-}
-
-/* ============================================================
-   GLASS INPUT
-   ============================================================ */
-.glass-input {
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255,255,255,0.10);
-  border-radius: 10px;
-  color: #c4b5fd;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.glass-input:focus {
-  border-color: rgba(139, 92, 246, 0.5);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12);
-}
-
-/* ============================================================
-   RECHARTS CUSTOMIZATION
-   ============================================================ */
-.recharts-tooltip-wrapper .recharts-default-tooltip {
-  background: rgba(7, 6, 15, 0.92) !important;
-  border: 1px solid rgba(255,255,255,0.12) !important;
+  border: 1px solid rgb(var(--line)) !important;
   border-radius: 12px !important;
-  backdrop-filter: blur(20px) !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
-  font-family: var(--font-mono) !important;
-  font-size: 11px !important;
-}
-
-/* ============================================================
-   ATMOSPHERIC BACKGROUND ANIMATION
-   ============================================================ */
-.atm-bg {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: -10;
   overflow: hidden;
 }
-
-.atm-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(var(--blur, 120px));
-  mix-blend-mode: screen;
-  opacity: var(--opacity, 0.12);
-  transform: translate(-50%, -50%);
-  transition: left 1.2s cubic-bezier(0.4,0,0.2,1),
-              top 1.2s cubic-bezier(0.4,0,0.2,1),
-              opacity 1s ease;
-  will-change: left, top, opacity;
+.leaflet-control-zoom a {
+  background: rgb(var(--panel)) !important;
+  color: rgb(var(--ink)) !important;
+  border-color: rgb(var(--line)) !important;
+}
+.leaflet-control-attribution {
+  background: rgb(var(--bg) / 0.7) !important;
+  color: rgb(var(--dim)) !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a {
+  color: rgb(var(--mute)) !important;
+}
+.leaflet-container.picking,
+.leaflet-container.picking .leaflet-interactive {
+  cursor: crosshair !important;
+}
+/* Riders glide between server ticks (1 s apart); no glide while the map itself is zooming */
+.rider-icon {
+  transition: transform 1s linear;
+}
+.leaflet-zoom-anim .rider-icon {
+  transition: none;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: rgb(var(--raise)) !important;
+  color: rgb(var(--ink)) !important;
+  border: 1px solid rgb(var(--edge));
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.5) !important;
+}
+.leaflet-popup-content {
+  margin: 10px 12px !important;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.leaflet-popup-close-button {
+  color: rgb(var(--mute)) !important;
 }
 
-/* ============================================================
-   RESPONSIVE & ACCESSIBILITY
-   ============================================================ */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.1ms !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
   }
-
-  .atm-orb {
-    transition: none !important;
-  }
-}
-
-@media (max-width: 768px) {
-  .atm-orb {
-    filter: blur(80px) !important;
-    opacity: calc(var(--opacity, 0.12) * 0.6) !important;
-  }
-
-  .glass-heavy,
-  .glass-medium {
-    backdrop-filter: blur(12px) saturate(1.4) !important;
-    -webkit-backdrop-filter: blur(12px) saturate(1.4) !important;
+  .rider-icon {
+    transition: none;
   }
 }

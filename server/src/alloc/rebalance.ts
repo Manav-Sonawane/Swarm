@@ -35,9 +35,9 @@ export function runRebalance(
   // Working copy of every rider whose trip hasn't departed (same as the allocator's view)
   const states = new Map<string, RiderPlanState>();
   for (const r of riders) {
-    if (r.status === 'offline') continue;
+    if (r.status === 'offline' || r.status === 'off_shift') continue;
     const onTrip = r.assignedOrderIds.map(id => orders.get(id)).filter((o): o is Order => !!o);
-    if (onTrip.some(o => o.status === 'picked')) continue;
+    if (onTrip.some(o => o.status === 'picked' || !!o.handoverLoc)) continue;
     states.set(r.id, { rider: r, orderIds: onTrip.map(o => o.id), tripStoreId: onTrip[0]?.storeId, fairPenaltySec: fairPenalty(r, riders) });
   }
 
@@ -45,7 +45,7 @@ export function runRebalance(
     r.status === 'at_store' || !states.has(r.id) || (!!store && haversineKm(r.loc, store.loc) <= CONFIG.FREEZE_DIST_KM);
 
   const candidates = [...orders.values()]
-    .filter(o => (o.status === 'assigned' || o.status === 'packing' || o.status === 'packed') && o.riderId)
+    .filter(o => (o.status === 'assigned' || o.status === 'packing' || o.status === 'packed') && o.riderId && !o.handoverLoc)
     .filter(o => {
       const r = riderById.get(o.riderId!);
       return !!r && !isFrozen(r, storeById.get(o.storeId!));

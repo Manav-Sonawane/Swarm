@@ -23,6 +23,8 @@ export function generateSeedRiders(stores: { id: string; loc: { lat: number; lng
         homeStoreId: store.id,
         route: [],
         assignedOrderIds: [],
+        shiftStartsAt: 0, // set per run by World (shift pattern)
+        shiftEndsAt: Number.MAX_SAFE_INTEGER,
         stats: {
           delivered: 0,
           activeSec: 0,

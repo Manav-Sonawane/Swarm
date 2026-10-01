@@ -8,7 +8,18 @@ import { runBaselineAllocation } from '../alloc/baseline';
 import { runSwarmAllocation } from '../alloc/swarm';
 import { runRebalance } from '../alloc/rebalance';
 import { classifyOrder } from '../alloc/feasibility';
-import { EventPayload, ScenarioName, WorldName } from '../types';
+import { EventPayload, Order, OrderClass, ScenarioName, WorldName } from '../types';
+import { isOnLand } from '../seed/land';
+import { servingStoreFor } from './store-select';
+import { haversineKm } from './travel';
+
+export type QuoteResult =
+  | { ok: true; storeId: string; storeName: string; distanceKm: number; class: OrderClass; promiseMin: number; stock: Record<string, number> }
+  | { ok: false; reason: string };
+
+export type PlaceResult =
+  | { ok: true; orderId: string; storeId: string; storeName: string; class: OrderClass; promiseMin: number; promisedBy: number }
+  | { ok: false; reason: string };
 
 const allocators = {
   naive: runNaiveAllocation,
@@ -148,7 +159,10 @@ export class SimEngine {
     world.applyAssignments(assignments, Number(ms.toFixed(2)));
   }
 
-  /** Swarm only: freeze-window rebalance of assigned-but-not-picked orders (CONTEXT §5 step 8). */
+  /**
+   * Swarm only: freeze-window rebalance of assigned-but-not-picked orders (CONTEXT §5 step 8), plus re-sequencing
+   * of the remaining drops for riders already out delivering (traffic or weather may have changed the best order).
+   */
   private rebalance(now: number, weatherMult: number): void {
     const world = this.worlds.swarm;
     const t0 = performance.now();
@@ -159,6 +173,58 @@ export class SimEngine {
       const order = world.ordersMap.get(m.orderId);
       if (order) world.reassignOrder(order, m.assignment, m.gainSec, m.rescued, now, Number(ms.toFixed(2)));
     }
+    world.resequenceDeliveries(now, weatherMult);
+  }
+
+  /** Shelf stock of the orderable SKUs per store. */
+  public stock(): Record<string, Record<string, number>> {
+    return this.orderGenerator.stockSnapshot();
+  }
+
+  /**
+   * What the app would quote for an address: its serving store, the distance and the promise class. Nothing is
+   * reserved; the customer then builds a cart from that store's stock.
+   */
+  public quote(lat: number, lng: number, now: number): QuoteResult {
+    const stores = this.worlds.swarm.stores;
+    const loc = { lat, lng };
+    if (!isOnLand(loc)) return { ok: false, reason: 'That spot is in the sea. Pick an address on land.' };
+    const store = servingStoreFor(loc, stores);
+    if (!store) return { ok: false, reason: `Outside the service area: no online dark store within ${CONFIG.GEOFENCE_KM} km.` };
+    const probe = { id: 'quote', loc, items: [], priority: 'regular', class: 'regular', createdAt: now, promisedBy: now, status: 'placed', servingStoreId: store.id } as Order;
+    classifyOrder(probe, stores, now, this.scenarios.getWeatherMult());
+    return {
+      ok: true,
+      storeId: store.id,
+      storeName: store.name,
+      distanceKm: Number(haversineKm(store.loc, loc).toFixed(2)),
+      class: probe.class,
+      promiseMin: Math.round((probe.promisedBy - now) / 60),
+      stock: this.orderGenerator.stockSnapshot()[store.id] ?? {},
+    };
+  }
+
+  /** A customer order placed by hand: enters every world, and Swarm assigns it straight away. */
+  public placeOrder(req: { lat: number; lng: number; items: { sku: string; qty: number }[] }, now: number): { result: PlaceResult; events: EventPayload[] } {
+    const swarm = this.worlds.swarm;
+    const made = this.orderGenerator.createManualOrder(req, now, swarm.stores);
+    if ('error' in made) return { result: { ok: false, reason: made.error }, events: [] };
+    const o = made.order;
+    const weatherMult = this.scenarios.getWeatherMult();
+    classifyOrder(o, swarm.stores, now, weatherMult);
+    this.arrivals.push(o.createdAt);
+    this.all.forEach(w => w.addOrders([o]));
+    this.allocate(swarm, now, weatherMult);
+    const store = swarm.stores.find(s => s.id === o.servingStoreId)!;
+    const promiseMin = Math.round((o.promisedBy - now) / 60);
+    const events: EventPayload[] = [
+      { simTime: now, world: 'all', kind: 'ORDER_PLACED', message: `🛒 ${o.id} placed from the dashboard: ${o.items.reduce((a, i) => a + i.qty, 0)} item(s) from ${store.name}, promised in ${promiseMin} min (${o.class}).` },
+      ...this.drainWorldEvents(),
+    ];
+    return {
+      result: { ok: true, orderId: o.id, storeId: store.id, storeName: store.name, class: o.class, promiseMin, promisedBy: o.promisedBy },
+      events,
+    };
   }
 
   /** Per-order events from all three visible worlds (Naive, Baseline, Swarm). */

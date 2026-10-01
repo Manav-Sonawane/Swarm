@@ -6,7 +6,8 @@ import cors from 'cors';
 import { CONFIG } from './config';
 import { SimClock } from './sim/clock';
 import { SimEngine } from './sim/engine';
-import { ScenarioName, TickPayload, WorldName } from './types';
+import { ScenarioName, SetupConfig, TickPayload, WorldName } from './types';
+import { applySetup, getSetup } from './setup';
 
 const app = express();
 app.use(cors());
@@ -40,6 +41,9 @@ function buildPayload(): TickPayload {
       naive: worlds.naive.getSnapshot(now, true), // full 3rd deliverable approach: riders, orders, stores, metrics
     },
     forecast: engine.forecast(),
+    setup: getSetup(),
+    stock: engine.stock(),
+    trafficJam: engine.scenarios.getTrafficJam(),
   };
 }
 
@@ -72,13 +76,15 @@ io.on('connection', socket => {
   console.log(`[Socket] Client connected: ${socket.id}`);
   socket.emit('tick', buildPayload());
 
-  socket.on('control', (data: { action: 'play' | 'pause' | 'reset'; speed?: number; seed?: number }) => {
+  socket.on('control', (data: { action: 'play' | 'pause' | 'reset'; speed?: number; seed?: number; setup?: Partial<SetupConfig> }) => {
     if (data.action === 'play') {
       simClock.start();
     } else if (data.action === 'pause') {
       simClock.pause();
     } else if (data.action === 'reset') {
+      applySetup(data.setup); // Setup screen values take effect on reset
       resetSimulation(data.seed ?? currentSeed);
+      io.emit('tick', buildPayload());
     }
 
     if (data.speed !== undefined) {
@@ -89,6 +95,26 @@ io.on('connection', socket => {
   socket.on('scenario', (data: { name: ScenarioName }) => {
     // Every world gets the disruption; Swarm re-plans immediately, the comparisons on their next tick
     for (const evt of engine.trigger(data.name, simClock.getSimTime())) io.emit('event', evt);
+  });
+
+  // Order composer: quote an address (serving store, promise, stock), then place a cart there
+  socket.on('quote', (data: { lat: number; lng: number }, ack?: (r: unknown) => void) => {
+    if (typeof ack !== 'function') return;
+    const lat = Number(data?.lat), lng = Number(data?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ack({ ok: false, reason: 'Invalid location.' });
+    ack(engine.quote(lat, lng, simClock.getSimTime()));
+  });
+
+  socket.on('place_order', (data: { lat: number; lng: number; items: { sku: string; qty: number }[] }, ack?: (r: unknown) => void) => {
+    const lat = Number(data?.lat), lng = Number(data?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Array.isArray(data?.items)) {
+      if (typeof ack === 'function') ack({ ok: false, reason: 'Invalid order.' });
+      return;
+    }
+    const { result, events } = engine.placeOrder({ lat, lng, items: data.items }, simClock.getSimTime());
+    for (const evt of events) io.emit('event', evt);
+    if (result.ok) io.emit('tick', buildPayload());
+    if (typeof ack === 'function') ack(result);
   });
 
   socket.on('disconnect', () => {
@@ -120,6 +146,8 @@ app.get('/api/export', (req, res) => {
     swarm: worlds.swarm.getSnapshot(now, false).metrics,
   });
 });
+
+app.get('/api/setup', (req, res) => res.json(getSetup()));
 
 app.get('/api/stores', (req, res) => {
   return res.json(worlds.baseline.getSnapshot(simClock.getSimTime()).stores);

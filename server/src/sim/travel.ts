@@ -16,6 +16,24 @@ export function haversineKm(a: LatLng, b: LatLng): number {
   return R * c;
 }
 
+// Zonal gridlock (traffic_jam scenario). Module-level so every travel-time call sees it; reset with the scenarios.
+let jam: { center: LatLng; radiusKm: number; mult: number } | null = null;
+export function setTrafficJam(j: { center: LatLng; radiusKm: number; mult: number } | null): void {
+  jam = j;
+}
+
+/** Travel-time multiplier for the straight leg a -> b: 1 outside the jam, up to JAM mult when the whole leg is inside. */
+export function jamTimeFactor(a: LatLng, b: LatLng): number {
+  if (!jam) return 1;
+  let inside = 0;
+  for (let i = 0; i < 5; i++) {
+    const t = (i + 0.5) / 5;
+    const p = { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
+    if (haversineKm(p, jam.center) <= jam.radiusKm) inside++;
+  }
+  return 1 + (jam.mult - 1) * (inside / 5);
+}
+
 export function routeDistanceKm(a: LatLng, b: LatLng): number {
   return haversineKm(a, b) * CONFIG.ROAD_WINDING_FACTOR;
 }
@@ -38,5 +56,5 @@ export function travelTimeSec(
   const distKm = routeDistanceKm(from, to);
   const trafficMult = getTrafficMultiplier(simTimeSec, zoneId);
   const effectiveSpeedKmh = Math.max(5, CONFIG.BASE_SPEED_KMH * trafficMult * weatherMult);
-  return (distKm / effectiveSpeedKmh) * 3600;
+  return (distKm / effectiveSpeedKmh) * 3600 * jamTimeFactor(from, to);
 }

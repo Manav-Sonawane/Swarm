@@ -1,286 +1,230 @@
-import React, { useState } from 'react';
-import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip,
-  BarChart, Bar, ReferenceLine,
-} from 'recharts';
-import { Metrics } from '../types';
-import { formatDuration } from '../lib/format';
-import {
-  Trophy, CheckCircle2, Clock, TrendingUp, Navigation,
-  BarChart2, Scale, ChevronDown, ChevronUp, Timer
-} from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Download } from 'lucide-react';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Metrics, TickPayload, WorldName } from '../types';
+import { WORLDS, WORLD_ORDER } from '../lib/theme';
+import { formatClock } from '../lib/format';
+import { Delta, Num, SectionTitle } from './ui';
 
-interface ResultsViewProps {
-  baselineMetrics: Metrics;
-  swarmMetrics: Metrics;
-  naiveMetrics: Metrics;
-}
+type Row = { label: string; hint: string; get: (m: Metrics) => number; fmt: (v: number) => string; better: 'high' | 'low' | 'none' };
 
-// ─── helpers ───────────────────────────────────────────────────────────
-function winnerCls(val: number, vals: number[], higherIsBetter: boolean): string {
-  const best = higherIsBetter ? Math.max(...vals) : Math.min(...vals);
-  return val === best ? 'text-emerald-400 font-black' : 'text-slate-300';
-}
+const fmtN = (d: number, suf = '') => (v: number) => `${v.toFixed(d)}${suf}`;
+const ROWS: { group: string; rows: Row[] }[] = [
+  {
+    group: 'Reliability',
+    rows: [
+      { label: 'On-time rate', hint: 'Delivered within the promise, out of every decided order', get: m => m.onTimeRate, fmt: fmtN(1, '%'), better: 'high' },
+      { label: 'P90 lateness', hint: '9 in 10 orders are no later than this', get: m => m.p90LatenessSec / 60, fmt: fmtN(1, ' min'), better: 'low' },
+      { label: 'Worst lateness', hint: 'The single latest order', get: m => m.maxLatenessSec / 60, fmt: fmtN(1, ' min'), better: 'low' },
+      { label: 'Late right now', hint: 'Open orders past, or projected past, their promise', get: m => m.lateNow, fmt: fmtN(0), better: 'low' },
+      { label: 'Failed', hint: 'Orders that could not be delivered', get: m => m.ordersFailed, fmt: fmtN(0), better: 'low' },
+    ],
+  },
+  {
+    group: 'Speed & efficiency',
+    rows: [
+      { label: 'Delivered', hint: 'Orders delivered so far', get: m => m.delivered, fmt: fmtN(0), better: 'high' },
+      { label: 'Avg delivery time', hint: 'Order to door', get: m => m.avgDeliverySec / 60, fmt: fmtN(1, ' min'), better: 'low' },
+      { label: 'P90 delivery time', hint: 'Order to door, 90th percentile', get: m => m.p90DeliverySec / 60, fmt: fmtN(1, ' min'), better: 'low' },
+      { label: 'Orders per trip', hint: 'Batching', get: m => m.ordersPerTrip, fmt: fmtN(2), better: 'high' },
+      { label: 'Km per order', hint: 'Rider kilometres per delivered order', get: m => m.kmPerOrder, fmt: fmtN(2, ' km'), better: 'low' },
+      { label: 'Rider utilization', hint: 'Share of time riders are busy', get: m => m.utilization, fmt: fmtN(1, '%'), better: 'none' },
+      { label: 'Fairness (std-dev)', hint: 'Spread of deliveries per rider; lower is more even', get: m => m.fairnessStdDev, fmt: fmtN(2), better: 'low' },
+    ],
+  },
+  {
+    group: 'Adaptation & compute',
+    rows: [
+      { label: 'Reassignments', hint: 'Orders moved to a better rider before pickup', get: m => m.reassignments, fmt: fmtN(0), better: 'none' },
+      { label: 'In-flight re-routes', hint: 'Drop orders re-sequenced on the road', get: m => m.reroutes ?? 0, fmt: fmtN(0), better: 'none' },
+      { label: 'Roadside handovers', hint: 'Goods collected after a rider dropped out', get: m => m.handovers ?? 0, fmt: fmtN(0), better: 'none' },
+      { label: 'Decision time (avg)', hint: 'Wall-clock per allocator call', get: m => m.decisionMsAvg, fmt: fmtN(2, ' ms'), better: 'none' },
+      { label: 'Decision time (max)', hint: 'Slowest allocator call; budget is 200 ms', get: m => m.decisionMsMax, fmt: fmtN(1, ' ms'), better: 'none' },
+    ],
+  },
+];
 
-function Delta({ swarm, baseline, higherIsBetter = true }: { swarm: number; baseline: number; higherIsBetter?: boolean }) {
-  const diff = swarm - baseline;
-  if (Math.abs(diff) < 0.05) return <span className="text-slate-500 text-[10px]">—</span>;
-  const isGood = higherIsBetter ? diff > 0 : diff < 0;
-  const sign = diff > 0 ? '+' : '';
+const metricsOf = (tick: TickPayload): Record<WorldName, Metrics> => ({
+  swarm: tick.worlds.swarm.metrics,
+  baseline: tick.worlds.baseline.metrics,
+  naive: tick.worlds.naive?.metrics ?? tick.worlds.baseline.metrics,
+});
+
+const axis = { stroke: 'rgb(var(--line))', tick: { fill: 'rgb(var(--dim))', fontSize: 11, fontFamily: 'Geist Mono' } };
+
+const ChartTip: React.FC<{ active?: boolean; payload?: { dataKey: string; value: number }[]; label?: number; unit: string; decimals: number }> = ({ active, payload, label, unit, decimals }) => {
+  if (!active || !payload?.length) return null;
   return (
-    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isGood
-      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-      : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'}`}>
-      {sign}{diff.toFixed(1)}
-    </span>
+    <div className="rounded-xl border border-edge bg-raise px-3 py-2 text-xs shadow-xl">
+      <div className="num mb-1 font-mono text-dim">{formatClock(label ?? 0)}</div>
+      {WORLD_ORDER.map(w => {
+        const p = payload.find(x => x.dataKey === w);
+        if (!p) return null;
+        return (
+          <div key={w} className="flex items-center justify-between gap-4">
+            <span className="inline-flex items-center gap-1.5 text-mute"><span className="h-2 w-2 rounded-full" style={{ background: WORLDS[w].hex }} />{WORLDS[w].label}</span>
+            <span className="num font-mono text-ink">{p.value.toFixed(decimals)}{unit}</span>
+          </div>
+        );
+      })}
+    </div>
   );
-}
+};
 
-function buildChartData(naive: Metrics, baseline: Metrics, swarm: Metrics) {
-  const map = new Map<number, {
-    time: string;
-    naiveOnTime: number; baselineOnTime: number; swarmOnTime: number;
-    naiveQueue: number;  baselineQueue: number;  swarmQueue: number;
-  }>();
+const Legend: React.FC = () => (
+  <div className="flex items-center gap-3 text-[11.5px] text-mute">
+    {WORLD_ORDER.map(w => (
+      <span key={w} className="inline-flex items-center gap-1.5"><span className="h-[3px] w-3.5 rounded" style={{ background: WORLDS[w].hex }} />{WORLDS[w].label}</span>
+    ))}
+  </div>
+);
 
-  const toTime = (t: number) => {
-    const h = Math.floor((t / 3600) % 24);
-    const m = Math.floor((t % 3600) / 60);
-    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-  };
-
-  const merge = (hist: Metrics['history'], key: 'naive' | 'baseline' | 'swarm') => {
-    for (const h of hist) {
-      if (!map.has(h.t)) {
-        map.set(h.t, { time: toTime(h.t), naiveOnTime: 100, baselineOnTime: 100, swarmOnTime: 100, naiveQueue: 0, baselineQueue: 0, swarmQueue: 0 });
-      }
-      const e = map.get(h.t)!;
-      const q = (h as { packingQueueDepth?: number }).packingQueueDepth ?? 0;
-      if (key === 'naive')    { e.naiveOnTime    = h.onTimeRate; e.naiveQueue    = q; }
-      if (key === 'baseline') { e.baselineOnTime = h.onTimeRate; e.baselineQueue = q; }
-      if (key === 'swarm')    { e.swarmOnTime    = h.onTimeRate; e.swarmQueue    = q; }
+const HistoryChart: React.FC<{ m: Record<WorldName, Metrics>; field: 'onTimeRate' | 'packingQueueDepth'; unit: string; decimals: number; domain?: [number, number] }> = ({ m, field, unit, decimals, domain }) => {
+  const data = useMemo(() => {
+    const byT = new Map<number, Record<string, number>>();
+    for (const w of WORLD_ORDER) for (const h of m[w].history) {
+      const row = byT.get(h.t) ?? { t: h.t };
+      row[w] = h[field];
+      byT.set(h.t, row);
     }
+    return [...byT.values()].sort((a, b) => a.t - b.t);
+  }, [m, field]);
+  if (data.length < 2) return <div className="grid h-[220px] place-items-center text-[12.5px] text-dim">The chart fills in as the run plays.</div>;
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+        <CartesianGrid stroke="rgb(var(--line))" strokeOpacity={0.6} vertical={false} />
+        <XAxis dataKey="t" {...axis} tickFormatter={formatClock} minTickGap={40} />
+        <YAxis {...axis} domain={domain ?? ['auto', 'auto']} width={44} tickFormatter={v => `${v}${unit === '%' ? '%' : ''}`} />
+        <Tooltip content={<ChartTip unit={unit} decimals={decimals} />} cursor={{ stroke: 'rgb(var(--edge))', strokeWidth: 1 }} isAnimationActive={false} />
+        {WORLD_ORDER.map(w => (
+          <Line key={w} dataKey={w} stroke={WORLDS[w].hex} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: 'rgb(var(--panel))' }} isAnimationActive={false} />
+        ))}
+      </LineChart>
+    </ResponsiveContainer>
+  );
+};
+
+export const ResultsView: React.FC<{ tick: TickPayload }> = ({ tick }) => {
+  const m = metricsOf(tick);
+  const exportJson = () => {
+    fetch('/api/export')
+      .then(r => r.json())
+      .then(data => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `swarm-results-seed-${tick.seed}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
   };
-
-  merge(naive.history, 'naive');
-  merge(baseline.history, 'baseline');
-  merge(swarm.history, 'swarm');
-
-  return Array.from(map.values())
-    .sort((a, b) => {
-      const [ah, am] = a.time.split(':').map(Number);
-      const [bh, bm] = b.time.split(':').map(Number);
-      return (ah * 60 + am) - (bh * 60 + bm);
-    })
-    .slice(-40);
-}
-
-// ─── component ─────────────────────────────────────────────────────────
-export const ResultsView: React.FC<ResultsViewProps> = ({ baselineMetrics, swarmMetrics, naiveMetrics }) => {
-  const [open, setOpen] = useState<string | null>('reliability');
-  const chartData = buildChartData(naiveMetrics, baselineMetrics, swarmMetrics);
-
-  const swarmWins    = swarmMetrics.onTimeRate >= baselineMetrics.onTimeRate && swarmMetrics.onTimeRate >= naiveMetrics.onTimeRate;
-  const baselineWins = !swarmWins && baselineMetrics.onTimeRate >= naiveMetrics.onTimeRate;
-  const advantage    = swarmMetrics.onTimeRate - baselineMetrics.onTimeRate;
-
-  const TT = { backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '11px', border: '1px solid #334155' };
-
-  const sections: {
-    id: string; label: string; icon: React.ReactNode;
-    rows: { label: string; n: string; b: string; s: string; nr: number; br: number; sr: number; h: boolean }[];
-  }[] = [
-    {
-      id: 'reliability', label: 'Reliability  (wins the demo)', icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" />,
-      rows: [
-        { label: 'On-Time Rate',           n:`${naiveMetrics.onTimeRate}%`,                     b:`${baselineMetrics.onTimeRate}%`,                     s:`${swarmMetrics.onTimeRate}%`,                     nr:naiveMetrics.onTimeRate,                   br:baselineMetrics.onTimeRate,                   sr:swarmMetrics.onTimeRate,                   h:true  },
-        { label: 'P90 Lateness',           n:formatDuration(naiveMetrics.p90LatenessSec??0),    b:formatDuration(baselineMetrics.p90LatenessSec??0),    s:formatDuration(swarmMetrics.p90LatenessSec??0),    nr:naiveMetrics.p90LatenessSec??0,            br:baselineMetrics.p90LatenessSec??0,            sr:swarmMetrics.p90LatenessSec??0,            h:false },
-        { label: 'Max Lateness',           n:formatDuration(naiveMetrics.maxLatenessSec??0),    b:formatDuration(baselineMetrics.maxLatenessSec??0),    s:formatDuration(swarmMetrics.maxLatenessSec??0),    nr:naiveMetrics.maxLatenessSec??0,            br:baselineMetrics.maxLatenessSec??0,            sr:swarmMetrics.maxLatenessSec??0,            h:false },
-        { label: 'Orders Failed',          n:`${naiveMetrics.ordersFailed??0}`,                 b:`${baselineMetrics.ordersFailed??0}`,                 s:`${swarmMetrics.ordersFailed??0}`,                 nr:naiveMetrics.ordersFailed??0,              br:baselineMetrics.ordersFailed??0,              sr:swarmMetrics.ordersFailed??0,              h:false },
-        { label: 'Late / At-Risk Now',     n:`${naiveMetrics.lateNow}`,                         b:`${baselineMetrics.lateNow}`,                         s:`${swarmMetrics.lateNow}`,                         nr:naiveMetrics.lateNow,                      br:baselineMetrics.lateNow,                      sr:swarmMetrics.lateNow,                      h:false },
-      ],
-    },
-    {
-      id: 'speed', label: 'Speed', icon: <Clock className="w-4 h-4 text-sky-400" />,
-      rows: [
-        { label: 'Avg Delivery Time',      n:formatDuration(naiveMetrics.avgDeliverySec),       b:formatDuration(baselineMetrics.avgDeliverySec),       s:formatDuration(swarmMetrics.avgDeliverySec),       nr:naiveMetrics.avgDeliverySec,               br:baselineMetrics.avgDeliverySec,               sr:swarmMetrics.avgDeliverySec,               h:false },
-        { label: 'P90 Delivery Time',      n:formatDuration(naiveMetrics.p90DeliverySec),       b:formatDuration(baselineMetrics.p90DeliverySec),       s:formatDuration(swarmMetrics.p90DeliverySec),       nr:naiveMetrics.p90DeliverySec,               br:baselineMetrics.p90DeliverySec,               sr:swarmMetrics.p90DeliverySec,               h:false },
-        { label: 'Delivered',              n:`${naiveMetrics.delivered}`,                       b:`${baselineMetrics.delivered}`,                       s:`${swarmMetrics.delivered}`,                       nr:naiveMetrics.delivered,                    br:baselineMetrics.delivered,                    sr:swarmMetrics.delivered,                    h:true  },
-      ],
-    },
-    {
-      id: 'efficiency', label: 'Efficiency', icon: <Navigation className="w-4 h-4 text-amber-400" />,
-      rows: [
-        { label: 'Km per Order',           n:`${naiveMetrics.kmPerOrder} km`,                   b:`${baselineMetrics.kmPerOrder} km`,                   s:`${swarmMetrics.kmPerOrder} km`,                   nr:naiveMetrics.kmPerOrder,                   br:baselineMetrics.kmPerOrder,                   sr:swarmMetrics.kmPerOrder,                   h:false },
-        { label: 'Total Km Driven',        n:`${naiveMetrics.kmTotal??0} km`,                   b:`${baselineMetrics.kmTotal??0} km`,                   s:`${swarmMetrics.kmTotal??0} km`,                   nr:naiveMetrics.kmTotal??0,                   br:baselineMetrics.kmTotal??0,                   sr:swarmMetrics.kmTotal??0,                   h:false },
-        { label: 'Orders / Trip (Batch)',  n:`${naiveMetrics.ordersPerTrip}×`,                  b:`${baselineMetrics.ordersPerTrip}×`,                  s:`${swarmMetrics.ordersPerTrip}×`,                  nr:naiveMetrics.ordersPerTrip,                br:baselineMetrics.ordersPerTrip,                sr:swarmMetrics.ordersPerTrip,                h:true  },
-        { label: 'Rider Utilization',      n:`${naiveMetrics.utilization}%`,                    b:`${baselineMetrics.utilization}%`,                    s:`${swarmMetrics.utilization}%`,                    nr:naiveMetrics.utilization,                  br:baselineMetrics.utilization,                  sr:swarmMetrics.utilization,                  h:true  },
-        { label: 'Fairness Std-Dev (σ)',   n:`${naiveMetrics.fairnessStdDev}`,                  b:`${baselineMetrics.fairnessStdDev}`,                  s:`${swarmMetrics.fairnessStdDev}`,                  nr:naiveMetrics.fairnessStdDev,               br:baselineMetrics.fairnessStdDev,               sr:swarmMetrics.fairnessStdDev,               h:false },
-      ],
-    },
-    {
-      id: 'compute', label: 'Compute & Stability', icon: <Timer className="w-4 h-4 text-purple-400" />,
-      rows: [
-        { label: 'Avg Decision Time',      n:`${naiveMetrics.decisionMsAvg??0}ms`,              b:`${baselineMetrics.decisionMsAvg??0}ms`,              s:`${swarmMetrics.decisionMsAvg??0}ms`,              nr:naiveMetrics.decisionMsAvg??0,             br:baselineMetrics.decisionMsAvg??0,             sr:swarmMetrics.decisionMsAvg??0,             h:false },
-        { label: 'Max Decision Time',      n:`${naiveMetrics.decisionMsMax??0}ms`,              b:`${baselineMetrics.decisionMsMax??0}ms`,              s:`${swarmMetrics.decisionMsMax??0}ms`,              nr:naiveMetrics.decisionMsMax??0,             br:baselineMetrics.decisionMsMax??0,             sr:swarmMetrics.decisionMsMax??0,             h:false },
-        { label: 'Reassignments',          n:`${naiveMetrics.reassignments??0}`,                b:`${baselineMetrics.reassignments??0}`,                s:`${swarmMetrics.reassignments??0}`,                nr:naiveMetrics.reassignments??0,             br:baselineMetrics.reassignments??0,             sr:swarmMetrics.reassignments??0,             h:false },
-        { label: 'Pack Queue Depth',       n:`${naiveMetrics.packingQueueDepth??0}`,            b:`${baselineMetrics.packingQueueDepth??0}`,            s:`${swarmMetrics.packingQueueDepth??0}`,            nr:naiveMetrics.packingQueueDepth??0,         br:baselineMetrics.packingQueueDepth??0,         sr:swarmMetrics.packingQueueDepth??0,         h:false },
-      ],
-    },
-  ];
-
-  const classBarData = [
-    { class: 'Express',    naive: naiveMetrics.ordersByClass?.express??0,    baseline: baselineMetrics.ordersByClass?.express??0,    swarm: swarmMetrics.ordersByClass?.express??0    },
-    { class: 'Regular',    naive: naiveMetrics.ordersByClass?.regular??0,    baseline: baselineMetrics.ordersByClass?.regular??0,    swarm: swarmMetrics.ordersByClass?.regular??0    },
-    { class: 'Infeasible', naive: naiveMetrics.ordersByClass?.infeasible??0, baseline: baselineMetrics.ordersByClass?.infeasible??0, swarm: swarmMetrics.ordersByClass?.infeasible??0 },
-  ];
+  const lead = m.swarm.onTimeRate - m.baseline.onTimeRate;
+  const p90 = (m.baseline.p90LatenessSec - m.swarm.p90LatenessSec) / 60;
+  const km = m.baseline.kmPerOrder - m.swarm.kmPerOrder;
 
   return (
-    <div className="space-y-4 font-sans">
-
-      {/* Winner banner */}
-      <div className={`rounded-xl p-4 border flex items-center justify-between ${
-        swarmWins
-          ? 'bg-gradient-to-r from-emerald-950/80 to-teal-950/60 border-emerald-500/40'
-          : 'bg-gradient-to-r from-rose-950/80 to-slate-950/60 border-rose-500/40'
-      }`}>
-        <div className="flex items-center space-x-3">
-          <Trophy className={`w-6 h-6 ${swarmWins ? 'text-emerald-400' : 'text-rose-400'}`} />
+    <div className="screen h-full overflow-y-auto">
+      <div className="mx-auto max-w-[1400px] space-y-3 p-3 lg:p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <div className={`font-black text-lg font-mono ${swarmWins ? 'text-emerald-300' : 'text-rose-300'}`}>
-              {swarmWins ? '🏆 SWARM WINS' : baselineWins ? '📊 Baseline Leads — tune config.ts' : '⚡ Naive Leads — tune config.ts!'}
-            </div>
-            <div className="text-xs text-slate-400 mt-0.5">
-              Swarm: <strong className="text-emerald-400">{swarmMetrics.onTimeRate}%</strong> &nbsp;·&nbsp;
-              Baseline: <strong className="text-slate-300">{baselineMetrics.onTimeRate}%</strong> &nbsp;·&nbsp;
-              Naive: <strong className="text-slate-400">{naiveMetrics.onTimeRate}%</strong>
-            </div>
+            <div className="eyebrow">Seed {tick.seed} · {formatClock(tick.simTime)} · same orders and disruptions for all three</div>
+            <h1 className="mt-1 font-display text-[26px] font-extrabold tracking-[-0.02em]">Results</h1>
           </div>
+          <button className="btn" onClick={exportJson}><Download size={15} /> Export JSON</button>
         </div>
-        <div className="text-right">
-          <div className="text-[11px] text-slate-500 font-mono">Swarm vs Baseline</div>
-          <div className={`text-2xl font-black font-mono ${advantage >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {advantage >= 0 ? '+' : ''}{advantage.toFixed(1)}%
-          </div>
-          <div className="text-[10px] text-slate-500">on-time advantage</div>
-        </div>
-      </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* On-time chart */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-bold font-mono text-white flex items-center space-x-1.5">
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
-              <span>On-Time Rate Over Time</span>
-            </h3>
-            <div className="flex space-x-3 text-[10px]">
-              <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-slate-500 inline-block" /><span className="text-slate-400">Naive</span></span>
-              <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-rose-500 inline-block" /><span className="text-slate-400">Baseline</span></span>
-              <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /><span className="text-emerald-400 font-bold">Swarm</span></span>
+        {/* Headline numbers */}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="panel p-4">
+            <div className="eyebrow">On-time rate, Swarm vs Baseline</div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <Num value={m.swarm.onTimeRate} decimals={1} suffix="%" className="font-display text-[34px] font-extrabold" />
+              <span className="num font-mono text-mute">vs {m.baseline.onTimeRate.toFixed(1)}%</span>
             </div>
+            <div className="mt-1"><Delta diff={lead} higherIsBetter unit=" pts" /></div>
           </div>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
-                <XAxis dataKey="time" stroke="#475569" fontSize={9} tickLine={false} interval="preserveStartEnd" />
-                <YAxis domain={[0, 100]} stroke="#475569" fontSize={9} tickLine={false} unit="%" />
-                <Tooltip contentStyle={TT} formatter={(v: any) => [`${v ?? 0}%`]} />
-                <ReferenceLine y={90} stroke="#10b981" strokeDasharray="3 3" strokeOpacity={0.35} />
-                <Line type="monotone" dataKey="naiveOnTime"    name="Naive"    stroke="#64748b" strokeWidth={1.5} dot={false} />
-                <Line type="monotone" dataKey="baselineOnTime" name="Baseline" stroke="#ef4444" strokeWidth={2}   dot={false} />
-                <Line type="monotone" dataKey="swarmOnTime"    name="Swarm"    stroke="#10b981" strokeWidth={2.5} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="panel p-4">
+            <div className="eyebrow">P90 lateness, Swarm vs Baseline</div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <Num value={m.swarm.p90LatenessSec / 60} decimals={1} suffix=" min" className="font-display text-[34px] font-extrabold" />
+              <span className="num font-mono text-mute">vs {(m.baseline.p90LatenessSec / 60).toFixed(1)} min</span>
+            </div>
+            <div className="mt-1"><Delta diff={-p90} higherIsBetter={false} unit=" min" /></div>
+          </div>
+          <div className="panel p-4">
+            <div className="eyebrow">Km per order, Swarm vs Baseline</div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <Num value={m.swarm.kmPerOrder} decimals={2} suffix=" km" className="font-display text-[34px] font-extrabold" />
+              <span className="num font-mono text-mute">vs {m.baseline.kmPerOrder.toFixed(2)} km</span>
+            </div>
+            <div className="mt-1"><Delta diff={-km} higherIsBetter={false} unit=" km" decimals={2} /></div>
           </div>
         </div>
 
-        {/* Queue depth chart */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-bold font-mono text-white flex items-center space-x-1.5">
-              <BarChart2 className="w-4 h-4 text-amber-400" />
-              <span>Pack Queue Depth Over Time</span>
-            </h3>
-            <div className="flex space-x-3 text-[10px]">
-              <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-slate-500 inline-block" /><span className="text-slate-400">Naive</span></span>
-              <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-rose-500 inline-block" /><span className="text-slate-400">Baseline</span></span>
-              <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /><span className="text-amber-400 font-bold">Swarm</span></span>
-            </div>
+        {/* Charts */}
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          <div className="panel p-4">
+            <SectionTitle eyebrow="Cumulative, every 10 sim-seconds" title="On-time rate over time" right={<Legend />} />
+            <div className="mt-3"><HistoryChart m={m} field="onTimeRate" unit="%" decimals={1} domain={[0, 100]} /></div>
           </div>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
-                <XAxis dataKey="time" stroke="#475569" fontSize={9} tickLine={false} interval="preserveStartEnd" />
-                <YAxis stroke="#475569" fontSize={9} tickLine={false} allowDecimals={false} />
-                <Tooltip contentStyle={TT} formatter={(v: any) => [`${v ?? 0} orders`]} />
-                <Line type="monotone" dataKey="naiveQueue"    name="Naive"    stroke="#64748b" strokeWidth={1.5} dot={false} />
-                <Line type="monotone" dataKey="baselineQueue" name="Baseline" stroke="#ef4444" strokeWidth={2}   dot={false} />
-                <Line type="monotone" dataKey="swarmQueue"    name="Swarm"    stroke="#f59e0b" strokeWidth={2.5} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="panel p-4">
+            <SectionTitle eyebrow="Orders waiting or being packed, all stores" title="Packing queue" right={<Legend />} />
+            <div className="mt-3"><HistoryChart m={m} field="packingQueueDepth" unit="" decimals={0} /></div>
           </div>
         </div>
-      </div>
 
-      {/* Collapsible metrics table */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden">
-        <div className="grid grid-cols-[1fr_90px_90px_90px_110px] bg-slate-950/80 border-b border-slate-800 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-wider">
-          <span className="text-slate-500">Metric</span>
-          <span className="text-center text-slate-500">Naive</span>
-          <span className="text-center text-slate-500">Baseline</span>
-          <span className="text-center text-emerald-400">Swarm ★</span>
-          <span className="text-right text-slate-500">vs Baseline</span>
+        {/* Full table */}
+        <div className="panel overflow-x-auto p-4">
+          <SectionTitle eyebrow="Best value in each row in bold" title="All metrics" />
+          <table className="mt-3 w-full min-w-[560px] text-[13px]">
+            <thead>
+              <tr className="text-left">
+                <th className="w-[38%] pb-2 font-normal"><span className="eyebrow">Metric</span></th>
+                {WORLD_ORDER.map(w => (
+                  <th key={w} className="pb-2 text-right font-medium">
+                    <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ background: WORLDS[w].hex }} />{WORLDS[w].label}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            {ROWS.map(g => (
+              <tbody key={g.group}>
+                <tr><td colSpan={4} className="pb-1 pt-4"><span className="eyebrow">{g.group}</span></td></tr>
+                {g.rows.map(r => {
+                  const vals = WORLD_ORDER.map(w => r.get(m[w]));
+                  const best = r.better === 'high' ? Math.max(...vals) : r.better === 'low' ? Math.min(...vals) : NaN;
+                  return (
+                    <tr key={r.label} className="border-t border-line/70" title={r.hint}>
+                      <td className="py-2 text-mute">{r.label}</td>
+                      {vals.map((v, i) => (
+                        <td key={i} className={`num py-2 text-right font-mono ${Math.abs(v - best) < 1e-9 ? 'font-semibold text-ink' : 'text-mute'}`}>{r.fmt(v)}</td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            ))}
+          </table>
         </div>
 
-        {sections.map((sec) => (
-          <div key={sec.id}>
-            <button
-              id={`results-section-${sec.id}`}
-              onClick={() => setOpen(open === sec.id ? null : sec.id)}
-              className="w-full grid grid-cols-[1fr_auto] items-center px-4 py-2.5 bg-slate-900/60 border-b border-slate-800/60 hover:bg-slate-800/50 transition-all text-left"
-            >
-              <div className="flex items-center space-x-2 text-xs font-bold text-slate-300">
-                {sec.icon}
-                <span>{sec.label}</span>
+        {/* Order mix */}
+        <div className="panel p-4">
+          <SectionTitle eyebrow="Classified once, identical in every world" title="Order mix" />
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
+            {([
+              ['Express (10 min)', m.swarm.ordersByClass.express],
+              ['Regular (20 min)', m.swarm.ordersByClass.regular],
+              ['Extended (30 min)', Math.max(0, m.swarm.ordersByClass.infeasible - m.swarm.ordersRejected)],
+              ['Outside service area', m.swarm.ordersRejected],
+            ] as [string, number][]).map(([l, n]) => (
+              <div key={l} className="rounded-xl border border-line bg-bg/60 p-3">
+                <div className="eyebrow">{l}</div>
+                <div className="num mt-1 font-display text-[22px] font-bold">{n}</div>
               </div>
-              {open === sec.id ? <ChevronUp className="w-3.5 h-3.5 text-slate-500" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />}
-            </button>
-
-            {open === sec.id && sec.rows.map((row, rIdx) => {
-              const vals = [row.nr, row.br, row.sr];
-              return (
-                <div key={rIdx} className="grid grid-cols-[1fr_90px_90px_90px_110px] items-center px-4 py-2.5 border-b border-slate-800/40 hover:bg-slate-800/30 transition-all">
-                  <span className="text-slate-400 font-mono text-[11px]">{row.label}</span>
-                  <span className={`text-center font-mono text-[11px] ${winnerCls(row.nr, vals, row.h)}`}>{row.n}</span>
-                  <span className={`text-center font-mono text-[11px] ${winnerCls(row.br, vals, row.h)}`}>{row.b}</span>
-                  <span className={`text-center font-mono text-[12px] ${winnerCls(row.sr, vals, row.h)}`}>{row.s}</span>
-                  <div className="flex justify-end"><Delta swarm={row.sr} baseline={row.br} higherIsBetter={row.h} /></div>
-                </div>
-              );
-            })}
+            ))}
           </div>
-        ))}
-      </div>
-
-      {/* Order class mix */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
-        <h3 className="text-xs font-bold font-mono text-white flex items-center space-x-1.5 mb-3">
-          <Scale className="w-4 h-4 text-purple-400" />
-          <span>Order Class Mix (Express / Regular / Infeasible)</span>
-        </h3>
-        <div className="h-32">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={classBarData} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
-              <XAxis type="number" stroke="#475569" fontSize={9} tickLine={false} />
-              <YAxis dataKey="class" type="category" stroke="#475569" fontSize={10} width={64} tickLine={false} />
-              <Tooltip contentStyle={TT} />
-              <Bar dataKey="naive"    name="Naive"    fill="#64748b" radius={[0,0,0,0]} />
-              <Bar dataKey="baseline" name="Baseline" fill="#ef4444" radius={[0,0,0,0]} />
-              <Bar dataKey="swarm"    name="Swarm"    fill="#10b981" radius={[0,4,4,0]} />
-            </BarChart>
-          </ResponsiveContainer>
         </div>
       </div>
     </div>

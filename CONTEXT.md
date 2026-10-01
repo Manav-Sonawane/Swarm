@@ -230,6 +230,10 @@ All three get the **same promise** per order by default (classified once on the 
 ### **Stretch (implemented; measured over seeds 1–8)**
 - **Packing queue order** (`packing.ts`, `SMART_PACKING`, on): Swarm stores pack savable trips first (tightest slack first) and keep a trip's orders together; already-late trips go after. Small but consistent: surge on-time 43.1 → 43.8%, P90 lateness slightly lower everywhere.
 - **Demand forecasting** (`SURGE_FORECAST`, on): 5-min moving average of the order rate; at ≥2× normal it raises a `FORECAST_SURGE` alert and sets `forecast.surge` in the tick payload. The optional surge *policy* (`SURGE_MODE`: hold 60 s for batch partners, 4 orders per trip) moved on-time by <0.5 pt and made tail lateness slightly worse, so it is off by default: under a surge riders, not batch size, are the bottleneck.
+- **Mid-delivery handover**: when a rider drops out with goods in the bag, those orders are held at the roadside (`ORDER_STRANDED`) and the nearest free rider (own store first, else any within 4 km) collects and delivers them (`ORDER_HANDOVER`). No order fails because its rider vanished.
+- **Zonal traffic + in-flight re-routing**: the `traffic_jam` disruption doubles travel time inside a 2 km circle around one store. Every rebalance, Swarm re-sequences the drops of riders already on the road when that saves 30 s or more (`ORDER_REROUTED`).
+- **Rider shifts**: every rider has a shift window. `staggered` has one rider per store clock on 30 min in and another clock off at 90 min; riders finish the trip in hand before going off shift, and no allocator assigns off-shift riders.
+- **Manual orders + live stock**: a viewer can place an order anywhere on the map. The server quotes the nearest store, class and promise, offers only in-stock items, reserves stock, and injects the order into all three worlds at the same moment.
 - **Rider fatigue routing** (`W_FATIGUE`, on): riders with 7+ deliveries in the last 2 hours pay extra for long trips. Riders start with 0–5 deliveries of shift history (same in every world). At the calibrated load riders make 2–3 deliveries/hour, so it rarely fires: a safety valve, not a measurable gain.
 
 ---
@@ -311,6 +315,15 @@ On-time % and lateness are computed over every **decided** order: delivered, fai
    - Baseline: that store's orders pile up
    - Swarm: immediately reroutes orders to nearest store, re-allocates riders
 5. **Results screen:** Naive vs Baseline vs Swarm: on-time %, worst lateness, failed deliveries, km per order, reassignments, decision time (ms)
+
+### **Dashboard screens (client):**
+- **Live**: synced maps (Swarm vs Baseline, all three, or one world) with gliding riders, the "Place an order" checkout, a live scoreboard, the disruption console and the event feed.
+- **Orders**: one order across all three worlds, with real event times, the rider, trip size and a "Why this rider?" drawer.
+- **Results**: on-time and packing-queue history charts, the full metrics table and JSON export.
+- **Track**: the customer's view of one order (ETA countdown, journey, rider, focused map) under each dispatcher.
+- **Setup**: fleet, demand, shift and promise settings plus the seed (applied on restart), the fleet roster and per-store stock.
+- **Pitch**: the talk track, section by section, with live numbers and a presenter timer.
+- Keyboard: Space plays or pauses, 1–6 switch screens. Screens deep-link via `#live`, `#orders`, … .
 
 ### **Key moment:** Click a late order in Baseline, then the same order in Swarm. Show the explainability: why Baseline sent a solo rider (greedy), why Swarm batched it (both orders stayed feasible, and the batch saved X seconds).
 

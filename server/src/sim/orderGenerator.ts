@@ -11,6 +11,7 @@ const ORDERABLE = SKUS.slice(0, 16);
 export class OrderGenerator {
   private rng: seedrandom.PRNG;
   private orderCounter: number = 1;
+  private manualCounter: number = 1;
   private nextArrivalSimTime: number = 0;
   private isSpikeActive: boolean = false;
   private spikeEndSimTime: number = 0;
@@ -26,6 +27,7 @@ export class OrderGenerator {
   public reset(seed: number, startSimTime: number): void {
     this.rng = seedrandom(`swarm-order-seed-${seed}`);
     this.orderCounter = 1;
+    this.manualCounter = 1;
     this.isSpikeActive = false;
     this.spikeEndSimTime = 0;
     this.catalog = generateSeedInventory();
@@ -35,6 +37,56 @@ export class OrderGenerator {
   public triggerSpike(nowSimTime: number, durationSec: number = 600): void {
     this.isSpikeActive = true;
     this.spikeEndSimTime = nowSimTime + durationSec;
+  }
+
+  /** Shelf stock of the orderable SKUs for every store (Setup screen, order composer). */
+  public stockSnapshot(): Record<string, Record<string, number>> {
+    const out: Record<string, Record<string, number>> = {};
+    for (const [storeId, inv] of Object.entries(this.catalog)) {
+      out[storeId] = {};
+      for (const sku of ORDERABLE) out[storeId][sku] = inv[sku] ?? 0;
+    }
+    return out;
+  }
+
+  /**
+   * A customer order placed by hand from the dashboard. Same rules as the stream: served by the nearest online
+   * dark store within the service radius, and the cart can only hold what that store has on the shelf.
+   */
+  public createManualOrder(
+    req: { lat: number; lng: number; items: { sku: string; qty: number }[] },
+    now: number,
+    stores: DarkStore[]
+  ): { order: Order } | { error: string } {
+    const loc = { lat: req.lat, lng: req.lng };
+    if (!isOnLand(loc)) return { error: "That spot is in the sea. Pick an address on land." };
+    const serving = servingStoreFor(loc, stores);
+    if (!serving) return { error: `Outside the service area: no online dark store within ${CONFIG.GEOFENCE_KM} km.` };
+    const inv = this.catalog[serving.id];
+    const items: { sku: string; qty: number }[] = [];
+    for (const it of req.items ?? []) {
+      const qty = Math.floor(Number(it.qty));
+      if (!ORDERABLE.includes(it.sku) || !(qty > 0)) continue;
+      if ((inv[it.sku] ?? 0) < qty) return { error: `${serving.name} only has ${inv[it.sku] ?? 0} of ${it.sku.replace('SKU-', '')} in stock.` };
+      items.push({ sku: it.sku, qty: Math.min(qty, 10) });
+    }
+    if (items.length === 0) return { error: 'The cart is empty. Add at least one in-stock item.' };
+    for (const it of items) inv[it.sku] -= it.qty; // reserved at checkout
+    const order: Order = {
+      id: `web-${String(this.manualCounter++).padStart(3, '0')}`,
+      loc,
+      items,
+      priority: 'regular',
+      class: 'regular',
+      createdAt: now,
+      promisedBy: now + CONFIG.REGULAR_PROMISED_SEC,
+      status: 'placed',
+      isLate: false,
+      zoneId: serving.id,
+      servingStoreId: serving.id,
+      manual: true,
+    };
+    return { order };
   }
 
   /** Stock-out: these SKUs show as "out of stock" at the store, so no new cart can include them. */

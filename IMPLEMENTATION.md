@@ -214,8 +214,23 @@ interface MetricsHistoryPoint {
 
 ```typescript
 socket.emit('control', { action: 'play'|'pause'|'reset', speed?: number, seed?: number,
-  setup?: { ridersPerStore?: number; ordersPerHour?: number; packingSlots?: number; traffic?: 'normal'|'peak' } }); // setup applies on reset
-socket.emit('scenario', { name: 'monsoon'|'store_offline'|'rider_offline'|'surge'|'cancel_burst'|'stockout'|'clear' });
+  setup?: Partial<SetupConfig> }); // setup applies on reset; clamped server-side (setup.ts)
+socket.emit('scenario', { name: 'monsoon'|'traffic_jam'|'store_offline'|'rider_offline'|'surge'|'cancel_burst'|'stockout'|'clear' });
+
+// Manual orders (Live screen → "Place an order"); both use socket acks
+socket.emit('quote', { lat, lng }, (r: QuoteResult) => …);   // nearest online store, class, promise, live stock; or { ok:false, reason }
+socket.emit('place_order', { lat, lng, items: [{ sku, qty }] }, (r: PlaceResult) => …);
+// Reserves stock, enters all three worlds at the same sim time, Swarm allocates at once. Ids: web-001, web-002 …
+
+interface SetupConfig {
+  ridersPerStore: number;   // 2–12
+  ordersPerHour: number;    // 60–600
+  packingSlots: number;     // 1–4
+  capacity: number;         // 1–4
+  baseSpeedKmh: number;     // 8–20
+  shiftPattern: 'all_evening' | 'staggered';
+  baselinePromises10: boolean;
+}
 ```
 
 ### REST Endpoints
@@ -224,6 +239,7 @@ socket.emit('scenario', { name: 'monsoon'|'store_offline'|'rider_offline'|'surge
 GET /api/decision/:world/:orderId  → DecisionRecord | 404
 GET /api/stores                    → StoreSnapshot[]
 GET /api/export                    → { naive, baseline, swarm, seed, setup, timestamp }
+GET /api/setup                     → SetupConfig
 ```
 
 ---

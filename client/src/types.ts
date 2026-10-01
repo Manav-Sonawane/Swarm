@@ -1,5 +1,8 @@
-export type RiderStatus = 'idle' | 'to_store' | 'at_store' | 'delivering' | 'returning' | 'offline';
+// Wire types: must stay assignable from server/src/types.ts (what the server sends).
+export type WorldName = 'naive' | 'baseline' | 'swarm';
+export type RiderStatus = 'idle' | 'to_store' | 'at_store' | 'delivering' | 'returning' | 'offline' | 'off_shift';
 export type OrderStatus = 'placed' | 'assigned' | 'packing' | 'packed' | 'picked' | 'delivered' | 'cancelled' | 'failed' | 'rejected';
+export type OrderClass = 'express' | 'regular' | 'infeasible';
 
 export interface RiderSnapshot {
   id: string;
@@ -9,7 +12,9 @@ export interface RiderSnapshot {
   load: number;
   routeLine: [number, number][];
   homeStoreId: string;
-  deliveries: number; // count this shift
+  deliveries: number;
+  shiftStartsAt?: number;
+  shiftEndsAt?: number;
 }
 
 export interface OrderSnapshot {
@@ -18,7 +23,7 @@ export interface OrderSnapshot {
   lng: number;
   status: OrderStatus;
   priority: 'express' | 'regular';
-  class: 'express' | 'regular' | 'infeasible';
+  class: OrderClass;
   isLate: boolean;
   riderId?: string;
   storeId?: string;
@@ -28,13 +33,15 @@ export interface OrderSnapshot {
   deliveredAt?: number;
   zoneId?: string;
   servingStoreId?: string;
-  assignedAt?: number; // real event times from the simulation
+  assignedAt?: number;
   packedAt?: number;
   pickedAt?: number;
-  tripSize?: number; // orders on the rider's trip when it left the store (1 = solo)
-  riderHomeStoreId?: string; // the store the assigned rider belongs to
+  tripSize?: number;
+  riderHomeStoreId?: string;
   failReason?: string;
-  items?: { sku: string; qty: number }[]; // the real basket
+  items?: { sku: string; qty: number }[];
+  handover?: boolean;
+  manual?: boolean;
 }
 
 export interface StoreSnapshot {
@@ -43,9 +50,7 @@ export interface StoreSnapshot {
   lat: number;
   lng: number;
   queue: number;
-  offline?: boolean; // store_offline scenario
-  packingQueue?: { orderId: string; status: 'waiting' | 'packing' | 'ready' }[];
-  inventory?: Record<string, number>;
+  offline?: boolean;
 }
 
 export interface Metrics {
@@ -60,12 +65,13 @@ export interface Metrics {
   lateNow: number;
   delivered: number;
   pending: number;
-  // extended contract fields
   p90LatenessSec: number;
   maxLatenessSec: number;
   ordersFailed: number;
   ordersRejected: number;
   reassignments: number;
+  handovers?: number;
+  reroutes?: number;
   decisionMsAvg: number;
   decisionMsMax: number;
   ordersByClass: { express: number; regular: number; infeasible: number };
@@ -82,6 +88,25 @@ export interface WorldSnapshot {
   metrics: Metrics;
 }
 
+export interface SetupConfig {
+  ridersPerStore: number;
+  ordersPerHour: number;
+  packingSlots: number;
+  capacity: number;
+  baseSpeedKmh: number;
+  shiftPattern: 'all_evening' | 'staggered';
+  baselinePromises10: boolean;
+}
+
+export interface TrafficJam {
+  storeId: string;
+  name: string;
+  lat: number;
+  lng: number;
+  radiusKm: number;
+  mult: number;
+}
+
 export interface TickPayload {
   simTime: number;
   speed: number;
@@ -94,7 +119,10 @@ export interface TickPayload {
     swarm: WorldSnapshot;
     naive?: WorldSnapshot;
   };
-  forecast?: { ordersPerHourLast5Min: number; surge: boolean }; // demand forecaster
+  forecast?: { ordersPerHourLast5Min: number; surge: boolean };
+  setup?: SetupConfig;
+  stock?: Record<string, Record<string, number>>;
+  trafficJam?: TrafficJam | null;
 }
 
 export interface EventPayload {
@@ -102,6 +130,14 @@ export interface EventPayload {
   world: 'naive' | 'baseline' | 'swarm' | 'both' | 'all';
   kind: string;
   message: string;
+}
+
+export interface Stop {
+  type: 'pickup' | 'drop';
+  orderId?: string;
+  storeId?: string;
+  loc: { lat: number; lng: number };
+  eta: number;
 }
 
 export interface CandidateScore {
@@ -120,7 +156,8 @@ export interface CandidateScore {
   feasible: boolean;
   maxLatenessSec?: number;
   minSlackSec?: number;
-  riderSec?: number; // rider-busy seconds this assignment consumes
+  riderSec?: number;
+  tripStops?: Stop[];
 }
 
 export interface DecisionRecord {
@@ -137,4 +174,14 @@ export interface DecisionRecord {
   decisionMs?: number;
 }
 
-export type ScenarioName = 'normal' | 'monsoon' | 'spike' | 'surge' | 'riders_offline' | 'rider_offline' | 'store_offline' | 'stockout' | 'cancel_burst' | 'clear_weather' | 'clear';
+export type ScenarioName =
+  | 'normal' | 'monsoon' | 'store_offline' | 'rider_offline' | 'surge' | 'cancel_burst' | 'stockout' | 'clear'
+  | 'spike' | 'riders_offline' | 'clear_weather' | 'traffic_jam';
+
+export type QuoteResult =
+  | { ok: true; storeId: string; storeName: string; distanceKm: number; class: OrderClass; promiseMin: number; stock: Record<string, number> }
+  | { ok: false; reason: string };
+
+export type PlaceResult =
+  | { ok: true; orderId: string; storeId: string; storeName: string; class: OrderClass; promiseMin: number; promisedBy: number }
+  | { ok: false; reason: string };

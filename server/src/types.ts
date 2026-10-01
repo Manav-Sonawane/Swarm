@@ -12,7 +12,7 @@ export interface DarkStore {
   offline?: boolean; // store_offline scenario: takes no new orders, unpicked orders are re-routed
 }
 
-export type RiderStatus = 'idle' | 'to_store' | 'at_store' | 'delivering' | 'returning' | 'offline';
+export type RiderStatus = 'idle' | 'to_store' | 'at_store' | 'delivering' | 'returning' | 'offline' | 'off_shift';
 
 export interface Stop {
   type: 'pickup' | 'drop';
@@ -32,6 +32,8 @@ export interface Rider {
   route: Stop[]; // remaining stops in order
   assignedOrderIds: string[];
   readyAtStoreSince?: number; // sim-time the rider was at the store with every order packed
+  shiftStartsAt: number; // sim-time the rider clocks in
+  shiftEndsAt: number; // sim-time the rider clocks out (after finishing the current trip)
   stats: {
     delivered: number;
     activeSec: number;
@@ -112,6 +114,8 @@ export interface Order {
   zoneId?: string; // = serving store (order density per zone)
   servingStoreId?: string; // the customer's nearest online dark store; the cart only offers what it has in stock
   failReason?: string;
+  handoverLoc?: LatLng; // goods left at the roadside by a rider who dropped out mid-delivery; another rider collects them here
+  manual?: boolean; // placed by hand from the dashboard
 }
 
 export interface Assignment {
@@ -140,6 +144,8 @@ export interface Metrics {
   ordersRejected: number;
   kmTotal: number;
   reassignments: number;
+  handovers: number; // roadside handovers after a rider dropped out mid-delivery
+  reroutes: number; // in-flight drop re-sequencing (Swarm)
   decisionMsAvg: number;
   decisionMsMax: number;
   ordersByClass: { express: number; regular: number; infeasible: number };
@@ -158,6 +164,8 @@ export interface RiderSnapshot {
   routeLine: [number, number][];
   homeStoreId: string;
   deliveries: number; // deliveries completed this run
+  shiftStartsAt: number;
+  shiftEndsAt: number;
 }
 
 export interface OrderSnapshot {
@@ -183,6 +191,8 @@ export interface OrderSnapshot {
   riderHomeStoreId?: string; // the store the assigned rider belongs to (differs from the serving store for Naive)
   items?: { sku: string; qty: number }[]; // the real basket (reserved at checkout)
   failReason?: string;
+  handover?: boolean; // waiting for, or on, a roadside handover
+  manual?: boolean; // placed by hand from the dashboard
 }
 
 export interface StoreSnapshot {
@@ -214,6 +224,28 @@ export interface TickPayload {
     naive: WorldSnapshot; // full snapshot too: the UI shows Naive in its 3-way views
   };
   forecast: { ordersPerHourLast5Min: number; surge: boolean }; // demand forecaster (Swarm surge mode)
+  setup: SetupConfig; // current run settings (Setup screen)
+  stock: Record<string, Record<string, number>>; // storeId -> sku -> units on the shelf (orderable SKUs)
+  trafficJam: TrafficJam | null; // zonal gridlock, if active
+}
+
+export interface SetupConfig {
+  ridersPerStore: number;
+  ordersPerHour: number;
+  packingSlots: number;
+  capacity: number;
+  baseSpeedKmh: number;
+  shiftPattern: 'all_evening' | 'staggered';
+  baselinePromises10: boolean;
+}
+
+export interface TrafficJam {
+  storeId: string;
+  name: string;
+  lat: number;
+  lng: number;
+  radiusKm: number;
+  mult: number;
 }
 
 export interface EventPayload {
@@ -227,4 +259,4 @@ export interface EventPayload {
 // Prototype names (spike, riders_offline, clear_weather) are kept as aliases for the current UI buttons.
 export type ScenarioName =
   | 'normal' | 'monsoon' | 'store_offline' | 'rider_offline' | 'surge' | 'cancel_burst' | 'stockout' | 'clear'
-  | 'spike' | 'riders_offline' | 'clear_weather';
+  | 'spike' | 'riders_offline' | 'clear_weather' | 'traffic_jam';

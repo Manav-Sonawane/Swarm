@@ -59,6 +59,14 @@ export const CONFIG = {
   TRAFFIC_MULTIPLIER_PEAK: 1.3, // travel-time multiplier, peak 8–11 and 18–21
   TRAFFIC_MULTIPLIER_MONSOON: 1.5, // travel-time multiplier, stacks with peak
   RIDERS_PER_STORE: 6,
+  // Shifts: 'all_evening' = every rider on all evening (default, used for the benchmarks); 'staggered' = one
+  // rider per store joins at 19:30 for the peak and one clocks out at 20:30
+  SHIFT_PATTERN: 'all_evening' as 'all_evening' | 'staggered',
+  // Zonal gridlock scenario: travel inside the circle takes JAM_MULTIPLIER x as long
+  JAM_RADIUS_KM: 2,
+  JAM_MULTIPLIER: 2,
+  // Swarm re-sequences an in-flight rider's remaining drops when it saves at least this much
+  REROUTE_MIN_GAIN_SEC: 30,
   ORDERS_PER_HOUR: 255, // base Poisson demand across all stores (spike = 3x). All orders are accepted now (no stock rejections); 255/h gives Baseline ~77% on time in steady conditions
   // Riders belong to exactly one dark store's pool (Zepto/Blinkit style) and only pick up there; pooling riders
   // across stores was tested and only helped back when orders could hop between stores.

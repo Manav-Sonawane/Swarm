@@ -24,9 +24,9 @@ export function runSwarmAllocation(
   // Working copy of every rider that can still take orders on its current trip
   const states = new Map<string, RiderPlanState>();
   for (const r of riders) {
-    if (r.status === 'offline' || r.assignedOrderIds.length >= r.capacity) continue;
+    if (r.status === 'offline' || r.status === 'off_shift' || r.assignedOrderIds.length >= r.capacity) continue;
     const onTrip = r.assignedOrderIds.map(id => orders.get(id)).filter((o): o is Order => !!o);
-    const departed = onTrip.some(o => o.status === 'picked');
+    const departed = onTrip.some(o => o.status === 'picked' || !!o.handoverLoc);
     if (departed) continue;
     states.set(r.id, { rider: r, orderIds: onTrip.map(o => o.id), tripStoreId: onTrip[0]?.storeId, fairPenaltySec: fairPenalty(r, riders) });
   }
