@@ -30,7 +30,7 @@ const ORBS: OrbConfig[] = [
     blur: 130,
     opacity: 0.16,
     xStart: 15, yStart: -5,
-    xEnd: 60,   yEnd: 55,
+    xEnd: 60, yEnd: 55,
   },
   {
     id: 'orb-2',
@@ -39,7 +39,7 @@ const ORBS: OrbConfig[] = [
     blur: 120,
     opacity: 0.10,
     xStart: 80, yStart: 25,
-    xEnd: 20,   yEnd: 70,
+    xEnd: 20, yEnd: 70,
   },
   {
     id: 'orb-3',
@@ -48,7 +48,7 @@ const ORBS: OrbConfig[] = [
     blur: 160,
     opacity: 0.25,
     xStart: 50, yStart: 90,
-    xEnd: 40,   yEnd: 20,
+    xEnd: 40, yEnd: 20,
   },
   {
     id: 'orb-4',
@@ -57,7 +57,7 @@ const ORBS: OrbConfig[] = [
     blur: 100,
     opacity: 0.07,
     xStart: 85, yStart: 75,
-    xEnd: 10,   yEnd: 15,
+    xEnd: 10, yEnd: 15,
   },
 ];
 
