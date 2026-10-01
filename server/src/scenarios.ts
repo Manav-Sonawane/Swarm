@@ -10,6 +10,7 @@ export class ScenarioEngine {
   private weatherMult: number = 1.0;
   private spikeEndsAt: number = -Infinity;
   private rng: seedrandom.PRNG = seedrandom('swarm-scenario-0');
+  private offlineStoreIds: string[] = [];
 
   constructor(seed: number = CONFIG.DEFAULT_SEED) {
     this.reset(seed);
@@ -19,6 +20,7 @@ export class ScenarioEngine {
   public reset(seed: number): void {
     this.weatherMult = 1.0;
     this.spikeEndsAt = -Infinity;
+    this.offlineStoreIds = [];
     this.rng = seedrandom(`swarm-scenario-${seed}`);
   }
 
@@ -26,6 +28,7 @@ export class ScenarioEngine {
   public getActiveScenario(nowSimTime: number): ScenarioName {
     if (nowSimTime < this.spikeEndsAt) return 'spike';
     if (this.weatherMult < 1.0) return 'monsoon';
+    if (this.offlineStoreIds.length > 0) return 'store_offline';
     return 'normal';
   }
 
@@ -38,7 +41,11 @@ export class ScenarioEngine {
     const events: EventPayload[] = [];
     const ev = (kind: string, message: string) => events.push({ simTime: nowSimTime, world: 'all', kind, message });
 
-    switch (name) {
+    // Contract names map onto the prototype ones the UI buttons still send
+    const aliases: Partial<Record<ScenarioName, ScenarioName>> = { surge: 'spike', rider_offline: 'riders_offline' };
+    const scenario = aliases[name] ?? name;
+
+    switch (scenario) {
       case 'monsoon': {
         this.weatherMult = 1 / CONFIG.TRAFFIC_MULTIPLIER_MONSOON;
         ev('SCENARIO_MONSOON', '🌧️ Heavy Monsoon started! Travel times up 50%.');
@@ -47,6 +54,31 @@ export class ScenarioEngine {
       case 'clear_weather': {
         this.weatherMult = 1.0;
         ev('SCENARIO_CLEAR', '☀️ Monsoon cleared. Travel speed returned to normal.');
+        break;
+      }
+      case 'clear': {
+        this.weatherMult = 1.0;
+        let restored = 0;
+        for (const world of worlds) restored = world.restoreStores();
+        this.offlineStoreIds = [];
+        ev('SCENARIO_CLEAR', `☀️ All clear: normal weather${restored ? `, ${restored} store(s) back online` : ''}.`);
+        break;
+      }
+      case 'store_offline': {
+        // Same store in every world, picked with the seeded RNG among stores still online
+        const online = worlds[0].stores.filter(st => !st.offline).map(st => st.id).sort();
+        if (online.length <= 1) break;
+        const storeId = online[Math.floor(this.rng() * online.length)];
+        this.offlineStoreIds.push(storeId);
+        let released = 0;
+        let lent = 0;
+        for (const world of worlds) {
+          const r = world.setStoreOffline(storeId);
+          released += r.released;
+          lent = r.lentRiders;
+        }
+        const name = worlds[0].stores.find(st => st.id === storeId)!.name;
+        ev('SCENARIO_STORE_OFFLINE', `🏚️ ${name} went offline. ${released} unpicked order(s) re-routed across worlds; its ${lent} riders join the nearest store.`);
         break;
       }
       case 'spike': {

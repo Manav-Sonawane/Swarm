@@ -2,7 +2,7 @@ import { DarkStore, Rider, Order, Assignment, DecisionRecord, CandidateScore } f
 import { CONFIG } from '../config';
 import { selectCandidateStores, StoreCandidate } from '../sim/store-select';
 import { haversineKm } from '../sim/travel';
-import { QueueForecast, forecastQueue } from './feasibility';
+import { QueueForecast, canServe, forecastQueue } from './feasibility';
 import { RiderPlanState, better, evaluateInsertion } from './insertion';
 
 /**
@@ -38,14 +38,12 @@ export function runSwarmAllocation(
     return f;
   };
 
-  const evaluate = (order: Order) => {
-    const storeCands = selectCandidateStores(order, stores, orders, nowSimTime, weatherMult, { rank: 'eta', extraQueued });
-    const cands: CandidateScore[] = [];
+  const evaluateAt = (order: Order, storeCands: StoreCandidate[], cands: CandidateScore[]) => {
     for (const cs of storeCands) {
       const fc = forecastOf(cs.store);
       const newReadyAt = fc.nextFinishAt(extraQueued.get(cs.store.id) ?? 0);
       const pool = [...states.values()]
-        .filter(s => !s.tripStoreId || s.tripStoreId === cs.store.id)
+        .filter(s => (!s.tripStoreId || s.tripStoreId === cs.store.id) && canServe(s.rider, cs.store, stores))
         .map(s => ({ s, d: haversineKm(s.rider.loc, cs.store.loc) }))
         .sort((a, b) => a.d - b.d || a.s.rider.id.localeCompare(b.s.rider.id))
         .slice(0, CONFIG.RIDER_CANDIDATES_PER_STORE);
@@ -53,6 +51,19 @@ export function runSwarmAllocation(
         const c = evaluateInsertion(order, s, cs.store, orders, fc, newReadyAt, nowSimTime, weatherMult);
         if (c) cands.push(c);
       }
+    }
+  };
+
+  // Best CANDIDATE_STORES first; if none of them keeps the promise, widen to every stocked store in the
+  // geofence (like a dispatcher trying the next store over when the nearby pools are busy)
+  const evaluate = (order: Order) => {
+    const all = selectCandidateStores(order, stores, orders, nowSimTime, weatherMult, { rank: 'eta', extraQueued, limit: stores.length });
+    let storeCands = all.slice(0, CONFIG.CANDIDATE_STORES);
+    const cands: CandidateScore[] = [];
+    evaluateAt(order, storeCands, cands);
+    if (!cands.some(c => c.feasible) && all.length > storeCands.length) {
+      evaluateAt(order, all.slice(storeCands.length), cands);
+      storeCands = all;
     }
     cands.sort((a, b) => (better(a, b) ? -1 : better(b, a) ? 1 : a.riderId.localeCompare(b.riderId)));
     return { cands, storeCands };
@@ -114,17 +125,18 @@ export function runSwarmAllocation(
   return assignments;
 }
 
-function buildDecision(
+export function buildDecision(
   order: Order,
   best: CandidateScore,
   cands: CandidateScore[],
   storeCands: StoreCandidate[],
   stores: DarkStore[],
-  now: number
+  now: number,
+  prefix: string = 'Swarm'
 ): DecisionRecord {
   const storeName = stores.find(s => s.id === best.storeId)?.name ?? best.storeId;
   const rejected = cands.filter(c => !c.feasible).length;
-  let reason = `Swarm: ${best.riderId} from ${storeName}. `;
+  let reason = `${prefix}: ${best.riderId} from ${storeName}. `;
   if (best.breakdown.batchSavingSec > 0) {
     reason += `Batched with ${best.tripStops!.filter(s => s.type === 'drop').length - 1} order(s); saves ${Math.round(best.breakdown.batchSavingSec)}s riding vs solo. `;
   } else {

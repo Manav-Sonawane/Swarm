@@ -130,6 +130,102 @@ export class World {
     }
   }
 
+  /**
+   * Moves an assigned-but-not-picked order to another rider (rebalance). Packing progress is kept when
+   * the store doesn't change; a store change re-queues the order and moves the stock reservation.
+   */
+  public reassignOrder(order: Order, a: Assignment, gainSec: number, rescued: boolean, now: number, decisionMs: number): void {
+    const fromRider = this.riders.find(r => r.id === order.riderId);
+    const toRider = this.riders.find(r => r.id === a.riderId);
+    const toStore = this.stores.find(s => s.id === a.storeId);
+    if (!toRider || !toStore) return;
+
+    if (fromRider) {
+      fromRider.assignedOrderIds = fromRider.assignedOrderIds.filter(id => id !== order.id);
+      fromRider.route = fromRider.route.filter(st => st.orderId !== order.id);
+      if (fromRider.assignedOrderIds.length === 0) {
+        fromRider.route = [];
+        fromRider.readyAtStoreSince = undefined;
+      }
+    }
+
+    if (order.storeId !== toStore.id) {
+      const fromStore = this.stores.find(s => s.id === order.storeId);
+      if (fromStore) {
+        fromStore.packQueue = fromStore.packQueue.filter(id => id !== order.id);
+        for (const item of order.items) {
+          if (fromStore.inventory[item.sku] !== undefined) fromStore.inventory[item.sku] += item.qty;
+        }
+      }
+      for (const item of order.items) {
+        if (toStore.inventory[item.sku] !== undefined) toStore.inventory[item.sku] = Math.max(0, toStore.inventory[item.sku] - item.qty);
+      }
+      toStore.packQueue.push(order.id);
+      order.status = 'assigned';
+      order.packStartedAt = undefined;
+    }
+
+    const fromId = order.riderId;
+    order.storeId = toStore.id;
+    order.riderId = toRider.id;
+    order.decision = { ...a.decision, decisionMs };
+    if (!toRider.assignedOrderIds.includes(order.id)) toRider.assignedOrderIds.push(order.id);
+    toRider.route = a.newRoute.map(s => ({ ...s, loc: { ...s.loc } }));
+    if (toRider.status === 'idle' || toRider.status === 'returning') toRider.status = 'to_store';
+
+    this.metricsEngine.reassignments += 1;
+    this.events.push({
+      simTime: now,
+      world: this.name,
+      kind: 'ORDER_REASSIGNED',
+      message: `🔁 ${order.id} moved ${fromId} → ${toRider.id}` + (rescued ? ' (rescued from running late).' : `, ${fmtDur(gainSec)} sooner.`),
+    });
+  }
+
+  /** store_offline: no new orders; unpicked orders go back to the pool; its riders join the nearest online store. */
+  public setStoreOffline(storeId: string): { released: number; lentRiders: number } {
+    const store = this.stores.find(s => s.id === storeId);
+    if (!store || store.offline) return { released: 0, lentRiders: 0 };
+    store.offline = true;
+
+    let released = 0;
+    this.ordersMap.forEach(o => {
+      if (o.storeId === storeId && (o.status === 'assigned' || o.status === 'packing' || o.status === 'packed')) {
+        this.releaseOrder(o);
+        released++;
+      }
+    });
+
+    const online = this.stores.filter(s => !s.offline);
+    let lentRiders = 0;
+    for (const r of this.riders) {
+      if (r.homeStoreId !== storeId || online.length === 0) continue;
+      const nearest = online.reduce((a, b) => (haversineKm(a.loc, store.loc) <= haversineKm(b.loc, store.loc) ? a : b));
+      r.originalHomeStoreId ??= storeId;
+      r.homeStoreId = nearest.id;
+      lentRiders++;
+    }
+    return { released, lentRiders };
+  }
+
+  /** Brings every offline store back and returns lent riders to their own pools. */
+  public restoreStores(): number {
+    let restored = 0;
+    for (const s of this.stores) {
+      if (s.offline) {
+        s.offline = false;
+        restored++;
+      }
+    }
+    for (const r of this.riders) {
+      if (r.originalHomeStoreId) {
+        r.homeStoreId = r.originalHomeStoreId;
+        r.originalHomeStoreId = undefined;
+      }
+    }
+    return restored;
+  }
+
   public step(dtSimSec: number, nowSimTime: number, weatherMult: number = 1.0): void {
     if (dtSimSec <= 0) return;
 
@@ -307,7 +403,7 @@ export class World {
         // Unassigned: best stocked store in the geofence, packing delay + travel
         eta = Infinity;
         for (const s of this.stores) {
-          if (haversineKm(s.loc, order.loc) > CONFIG.GEOFENCE_KM || !hasStock(s, order)) continue;
+          if (s.offline || haversineKm(s.loc, order.loc) > CONFIG.GEOFENCE_KM || !hasStock(s, order)) continue;
           eta = Math.min(eta, fc(s).nextFinishAt(0) + travelTimeSec(s.loc, order.loc, now, weatherMult));
         }
         if (eta === Infinity) eta = Math.max(now, order.promisedBy) + 1;
@@ -362,6 +458,7 @@ export class World {
       lat: s.loc.lat,
       lng: s.loc.lng,
       queue: s.packQueue.length,
+      offline: !!s.offline,
     }));
 
     return { riders, orders, stores, metrics };

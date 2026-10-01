@@ -29,6 +29,7 @@ export function selectCandidateStores(
   const eligible: StoreCandidate[] = [];
 
   for (const store of stores) {
+    if (store.offline) continue;
     if (haversineKm(store.loc, order.loc) > CONFIG.GEOFENCE_KM) continue;
     if (!hasStock(store, order)) continue;
 

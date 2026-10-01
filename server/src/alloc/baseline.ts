@@ -2,7 +2,7 @@ import { DarkStore, Rider, Order, Assignment, DecisionRecord } from '../types';
 import { CONFIG } from '../config';
 import { selectCandidateStores } from '../sim/store-select';
 import { haversineKm } from '../sim/travel';
-import { forecastQueue, planTrip } from './feasibility';
+import { canServe, forecastQueue, planTrip } from './feasibility';
 
 /** Riders with no orders that are free to take a new solo trip. */
 export function freeRiders(riders: Rider[]): Rider[] {
@@ -85,19 +85,26 @@ export function runBaselineAllocation(
   for (const order of sortedOrders) {
     if (available.length === 0) break;
 
-    const cands = selectCandidateStores(order, stores, orders, nowSimTime, weatherMult, { rank: 'travel', limit: 1, extraQueued });
-    if (cands.length === 0) continue;
-    const store = cands[0].store;
-
+    // Nearest stocked store (in the geofence) that has a free rider in its own pool
+    const cands = selectCandidateStores(order, stores, orders, nowSimTime, weatherMult, { rank: 'travel', limit: stores.length, extraQueued });
+    let store: DarkStore | null = null;
     let idx = -1;
-    let minDist = Infinity;
-    available.forEach((r, i) => {
-      const d = haversineKm(r.loc, store.loc);
-      if (d < minDist || (d === minDist && r.id < available[idx].id)) {
-        minDist = d;
-        idx = i;
+    for (const cs of cands) {
+      let minDist = Infinity;
+      available.forEach((r, i) => {
+        if (!canServe(r, cs.store, stores)) return;
+        const d = haversineKm(r.loc, cs.store.loc);
+        if (d < minDist || (d === minDist && r.id < available[idx].id)) {
+          minDist = d;
+          idx = i;
+        }
+      });
+      if (idx !== -1) {
+        store = cs.store;
+        break;
       }
-    });
+    }
+    if (!store) continue; // every nearby pool is busy: wait for a rider
     const rider = available.splice(idx, 1)[0];
 
     const extra = extraQueued.get(store.id) ?? 0;
@@ -106,7 +113,7 @@ export function runBaselineAllocation(
 
     assignments.push(
       soloAssignment(order, rider, store, readyAt, nowSimTime, weatherMult,
-        `Greedy Baseline: nearest stocked store (${store.name}) + nearest free rider (${rider.id}), solo trip.`)
+        `Greedy Baseline: nearest stocked store with a free rider (${store.name}) + its nearest free rider (${rider.id}), solo trip.`)
     );
   }
 

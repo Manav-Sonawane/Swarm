@@ -2,17 +2,10 @@ import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import { performance } from 'perf_hooks';
 
 import { CONFIG } from './config';
 import { SimClock } from './sim/clock';
-import { World } from './sim/world';
-import { OrderGenerator } from './sim/orderGenerator';
-import { ScenarioEngine } from './scenarios';
-import { runNaiveAllocation } from './alloc/naive';
-import { runBaselineAllocation } from './alloc/baseline';
-import { runSwarmAllocation } from './alloc/swarm';
-import { classifyOrder } from './alloc/feasibility';
+import { SimEngine } from './sim/engine';
 import { ScenarioName, TickPayload, WorldName } from './types';
 
 const app = express();
@@ -29,40 +22,8 @@ const io = new Server(server, {
 
 let currentSeed = CONFIG.DEFAULT_SEED;
 const simClock = new SimClock(currentSeed);
-const worlds: Record<WorldName, World> = {
-  naive: new World('naive', simClock.getSimTime()),
-  baseline: new World('baseline', simClock.getSimTime()),
-  swarm: new World('swarm', simClock.getSimTime()),
-};
-const allWorlds = [worlds.naive, worlds.baseline, worlds.swarm];
-const allocators = {
-  naive: runNaiveAllocation,
-  baseline: runBaselineAllocation,
-  swarm: runSwarmAllocation,
-};
-const orderGenerator = new OrderGenerator(currentSeed, simClock.getSimTime());
-const scenarioEngine = new ScenarioEngine(currentSeed);
-
-let lastSwarmEpochSimTime = simClock.getSimTime();
-
-/** Runs one world's allocator on its pending orders and records the wall-clock decision time. */
-function allocate(world: World, nowSimTime: number, weatherMult: number): void {
-  const pending = world.getPendingOrders();
-  if (pending.length === 0) return;
-  const t0 = performance.now();
-  const assignments = allocators[world.name](pending, world.riders, world.stores, world.ordersMap, nowSimTime, weatherMult);
-  const ms = performance.now() - t0;
-  world.metricsEngine.recordDecision(ms);
-  world.applyAssignments(assignments, Number(ms.toFixed(2)));
-}
-
-/** Forwards per-order events (delivered, delivered late, failed) from the two visible worlds. */
-function emitWorldEvents(): void {
-  worlds.naive.drainEvents(); // headless world: keep the feed readable
-  for (const w of [worlds.baseline, worlds.swarm]) {
-    for (const evt of w.drainEvents()) io.emit('event', evt);
-  }
-}
+const engine = new SimEngine(currentSeed, simClock.getSimTime());
+const { worlds } = engine;
 
 function buildPayload(): TickPayload {
   const now = simClock.getSimTime();
@@ -71,8 +32,8 @@ function buildPayload(): TickPayload {
     speed: simClock.getSpeed(),
     running: simClock.isRunning(),
     seed: simClock.getSeed(),
-    activeScenario: scenarioEngine.getActiveScenario(now),
-    weatherMult: scenarioEngine.getWeatherMult(),
+    activeScenario: engine.scenarios.getActiveScenario(now),
+    weatherMult: engine.scenarios.getWeatherMult(),
     worlds: {
       baseline: worlds.baseline.getSnapshot(now),
       swarm: worlds.swarm.getSnapshot(now),
@@ -86,10 +47,7 @@ function resetSimulation(seed: number = currentSeed) {
   simClock.setSeed(seed);
   simClock.reset();
   const startSimTime = simClock.getSimTime();
-  allWorlds.forEach(w => w.reset(startSimTime));
-  orderGenerator.reset(seed, startSimTime);
-  scenarioEngine.reset(seed);
-  lastSwarmEpochSimTime = startSimTime;
+  engine.reset(seed, startSimTime);
 
   io.emit('event', {
     simTime: startSimTime,
@@ -103,44 +61,8 @@ function resetSimulation(seed: number = currentSeed) {
 setInterval(() => {
   if (simClock.isRunning()) {
     const dtSimSec = simClock.tick(1.0); // 1 second real time tick
-    const nowSimTime = simClock.getSimTime();
-    const weatherMult = scenarioEngine.getWeatherMult();
-
-    // 1. Shared order stream, classified once so every world gets the same promise (USP 0)
-    const newOrders = orderGenerator.step(nowSimTime, worlds.swarm.stores);
-    for (const o of newOrders) classifyOrder(o, worlds.swarm.stores, nowSimTime, weatherMult);
-    if (newOrders.length > 0) {
-      allWorlds.forEach(w => w.addOrders(newOrders));
-      io.emit('event', {
-        simTime: nowSimTime,
-        world: 'all',
-        kind: 'ORDERS_PLACED',
-        message: `📦 ${newOrders.length} new customer order(s) placed across dark stores.`,
-      });
-      for (const o of newOrders) {
-        if (o.status !== 'rejected') continue;
-        io.emit('event', {
-          simTime: nowSimTime,
-          world: 'all',
-          kind: 'ORDER_REJECTED',
-          message: `🚫 ${o.id} rejected: no store within ${CONFIG.GEOFENCE_KM} km has every item in stock.`,
-        });
-      }
-    }
-
-    // 2. Move riders, pack, deliver
-    allWorlds.forEach(w => w.step(dtSimSec, nowSimTime, weatherMult));
-    emitWorldEvents();
-
-    // 3. Allocate: comparisons every tick; Swarm on new orders and every epoch (CONTEXT §5)
-    allocate(worlds.naive, nowSimTime, weatherMult);
-    allocate(worlds.baseline, nowSimTime, weatherMult);
-    if (newOrders.length > 0 || nowSimTime - lastSwarmEpochSimTime >= CONFIG.EPOCH) {
-      lastSwarmEpochSimTime = nowSimTime;
-      allocate(worlds.swarm, nowSimTime, weatherMult);
-    }
+    for (const evt of engine.tick(dtSimSec, simClock.getSimTime())) io.emit('event', evt);
   }
-
   io.emit('tick', buildPayload());
 }, 1000);
 
@@ -164,14 +86,8 @@ io.on('connection', socket => {
   });
 
   socket.on('scenario', (data: { name: ScenarioName }) => {
-    const nowSimTime = simClock.getSimTime();
-    const events = scenarioEngine.triggerScenario(data.name, allWorlds, orderGenerator, nowSimTime);
-
-    // Swarm re-plans immediately on a disruption; the comparisons pick up released orders next tick
-    allocate(worlds.swarm, nowSimTime, scenarioEngine.getWeatherMult());
-
-    events.forEach(evt => io.emit('event', evt));
-    emitWorldEvents(); // e.g. orders failed when a rider went offline mid-delivery
+    // Every world gets the disruption; Swarm re-plans immediately, the comparisons on their next tick
+    for (const evt of engine.trigger(data.name, simClock.getSimTime())) io.emit('event', evt);
   });
 
   socket.on('disconnect', () => {
