@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { socket } from './socket';
 import { TickPayload, EventPayload, ScenarioName, OrderSnapshot } from './types';
 import { getMockTickPayload } from './mock/mockStream';
@@ -12,13 +12,16 @@ import { EventLog } from './components/EventLog';
 import { OrderLedger } from './components/OrderLedger';
 import { FinalScoreboardModal } from './components/FinalScoreboardModal';
 import { PitchDeckModal } from './components/PitchDeckModal';
+import { Map as MapIcon } from 'lucide-react';
 
 const App: React.FC = () => {
   const [tickData, setTickData] = useState<TickPayload>(getMockTickPayload());
   const [events, setEvents] = useState<EventPayload[]>([]);
   const [connected, setConnected] = useState<boolean>(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [selectedWorld, setSelectedWorld] = useState<'baseline' | 'swarm'>('swarm');
+  const [selectedWorld, setSelectedWorld] = useState<'naive' | 'baseline' | 'swarm'>('swarm');
+  const [mapLayout, setMapLayout] = useState<'dual_baseline' | '3way' | 'dual_naive' | 'single'>('dual_baseline');
+  const [singleFocusWorld, setSingleFocusWorld] = useState<'naive' | 'baseline' | 'swarm'>('swarm');
   const [scoreboardOpen, setScoreboardOpen] = useState<boolean>(false);
   const [pitchDeckOpen, setPitchDeckOpen] = useState<boolean>(false);
 
@@ -49,7 +52,7 @@ const App: React.FC = () => {
     socket.emit('scenario', { name });
   };
 
-  const handleSelectOrder = (orderId: string, world: 'baseline' | 'swarm') => {
+  const handleSelectOrder = (orderId: string, world: 'naive' | 'baseline' | 'swarm') => {
     setSelectedOrderId(orderId);
     setSelectedWorld(world);
   };
@@ -66,8 +69,20 @@ const App: React.FC = () => {
     });
   };
 
+  // Safe fallback for naive world snapshot
+  const naiveWorld = tickData.worlds.naive || {
+    riders: tickData.worlds.baseline.riders,
+    orders: tickData.worlds.baseline.orders,
+    stores: tickData.worlds.baseline.stores,
+    metrics: tickData.worlds.baseline.metrics,
+  };
+
+  const targetWorldSnapshot = selectedWorld === 'naive'
+    ? naiveWorld
+    : tickData.worlds[selectedWorld];
+
   const selectedOrderObj: OrderSnapshot | null = selectedOrderId
-    ? tickData.worlds[selectedWorld].orders.find((o: OrderSnapshot) => o.id === selectedOrderId) || null
+    ? targetWorldSnapshot.orders.find((o: OrderSnapshot) => o.id === selectedOrderId) || null
     : null;
 
   return (
@@ -95,37 +110,153 @@ const App: React.FC = () => {
           onTriggerScenario={handleTriggerScenario}
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[440px]">
-          <MapView
-            title="World A: Baseline (Greedy FIFO)"
-            badge="Naive Nearest-Rider"
-            badgeColor="bg-rose-950/80 text-rose-400 border-rose-600/40"
-            worldData={tickData.worlds.baseline}
-            onSelectOrder={(id: string) => handleSelectOrder(id, 'baseline')}
-            selectedOrderId={selectedWorld === 'baseline' ? selectedOrderId || undefined : undefined}
-          />
-          <MapView
-            title="World B: Swarm (Rolling-Horizon Engine)"
-            badge="Batching + Slack-Aware + Re-planning"
-            badgeColor="bg-emerald-950/80 text-emerald-400 border-emerald-500/40"
-            worldData={tickData.worlds.swarm}
-            onSelectOrder={(id: string) => handleSelectOrder(id, 'swarm')}
-            selectedOrderId={selectedWorld === 'swarm' ? selectedOrderId || undefined : undefined}
-          />
+        {/* Map Layout Toolbar & Large Map View */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 border border-slate-800/80 px-4 py-2 rounded-xl">
+            <div className="flex items-center space-x-2">
+              <MapIcon className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-200">
+                Live Mumbai Digital Twin Maps (3 Deliverable Approaches)
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2 flex-wrap gap-1">
+              <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px] font-mono">
+                <button
+                  onClick={() => setMapLayout('dual_baseline')}
+                  className={`px-3 py-1 rounded transition-all ${
+                    mapLayout === 'dual_baseline'
+                      ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Baseline vs Swarm
+                </button>
+                <button
+                  onClick={() => setMapLayout('3way')}
+                  className={`px-3 py-1 rounded transition-all ${
+                    mapLayout === '3way'
+                      ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  3-Way Grid
+                </button>
+                <button
+                  onClick={() => setMapLayout('dual_naive')}
+                  className={`px-3 py-1 rounded transition-all ${
+                    mapLayout === 'dual_naive'
+                      ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Naive vs Swarm
+                </button>
+                <button
+                  onClick={() => setMapLayout('single')}
+                  className={`px-3 py-1 rounded transition-all ${
+                    mapLayout === 'single'
+                      ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Focus View
+                </button>
+              </div>
+
+              {mapLayout === 'single' && (
+                <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px] font-mono">
+                  <button
+                    onClick={() => setSingleFocusWorld('naive')}
+                    className={`px-2.5 py-1 rounded transition-all ${
+                      singleFocusWorld === 'naive' ? 'bg-slate-800 text-white font-bold' : 'text-slate-400'
+                    }`}
+                  >
+                    Naive
+                  </button>
+                  <button
+                    onClick={() => setSingleFocusWorld('baseline')}
+                    className={`px-2.5 py-1 rounded transition-all ${
+                      singleFocusWorld === 'baseline' ? 'bg-rose-950 text-rose-300 font-bold' : 'text-slate-400'
+                    }`}
+                  >
+                    Baseline
+                  </button>
+                  <button
+                    onClick={() => setSingleFocusWorld('swarm')}
+                    className={`px-2.5 py-1 rounded transition-all ${
+                      singleFocusWorld === 'swarm' ? 'bg-emerald-950 text-emerald-300 font-bold' : 'text-slate-400'
+                    }`}
+                  >
+                    Swarm ★
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Large Map Container (580px - 620px height) */}
+          <div className={`grid gap-4 ${
+            mapLayout === '3way'
+              ? 'grid-cols-1 md:grid-cols-3 h-[580px]'
+              : mapLayout === 'single'
+              ? 'grid-cols-1 h-[620px]'
+              : 'grid-cols-1 lg:grid-cols-2 h-[580px]'
+          }`}>
+            {/* Approach 1: Naive Map (when 3way, dual_naive, or single naive) */}
+            {(mapLayout === '3way' || mapLayout === 'dual_naive' || (mapLayout === 'single' && singleFocusWorld === 'naive')) && (
+              <MapView
+                title="Approach 1: Naive"
+                badge="Single-Store Nearest Rider"
+                badgeColor="bg-slate-900/90 text-slate-300 border-slate-700"
+                worldData={naiveWorld}
+                onSelectOrder={(id: string) => handleSelectOrder(id, 'naive')}
+                selectedOrderId={selectedWorld === 'naive' ? selectedOrderId || undefined : undefined}
+              />
+            )}
+
+            {/* Approach 2: Baseline Map (when 3way, dual_baseline, or single baseline) */}
+            {(mapLayout === '3way' || mapLayout === 'dual_baseline' || (mapLayout === 'single' && singleFocusWorld === 'baseline')) && (
+              <MapView
+                title="Approach 2: Baseline"
+                badge="Nearest Stocked Dark Store (FIFO Solo)"
+                badgeColor="bg-rose-950/80 text-rose-400 border-rose-600/40"
+                worldData={tickData.worlds.baseline}
+                onSelectOrder={(id: string) => handleSelectOrder(id, 'baseline')}
+                selectedOrderId={selectedWorld === 'baseline' ? selectedOrderId || undefined : undefined}
+              />
+            )}
+
+            {/* Approach 3: Swarm Map (when 3way, dual_baseline, dual_naive, or single swarm) */}
+            {(mapLayout === '3way' || mapLayout === 'dual_baseline' || mapLayout === 'dual_naive' || (mapLayout === 'single' && singleFocusWorld === 'swarm')) && (
+              <MapView
+                title="Approach 3: Swarm Engine ★"
+                badge="Coupled Store + Rider + Batch Route"
+                badgeColor="bg-emerald-950/80 text-emerald-400 border-emerald-500/40"
+                worldData={tickData.worlds.swarm}
+                onSelectOrder={(id: string) => handleSelectOrder(id, 'swarm')}
+                selectedOrderId={selectedWorld === 'swarm' ? selectedOrderId || undefined : undefined}
+              />
+            )}
+          </div>
         </div>
 
         <MetricsPanel
           baselineMetrics={tickData.worlds.baseline.metrics}
           swarmMetrics={tickData.worlds.swarm.metrics}
+          naiveMetrics={tickData.worlds.naive?.metrics}
         />
 
         <OrderLedger
           baselineOrders={tickData.worlds.baseline.orders}
           swarmOrders={tickData.worlds.swarm.orders}
+          naiveOrders={tickData.worlds.naive?.orders}
           baselineStores={tickData.worlds.baseline.stores}
           swarmStores={tickData.worlds.swarm.stores}
+          naiveStores={tickData.worlds.naive?.stores}
           baselineRiders={tickData.worlds.baseline.riders}
           swarmRiders={tickData.worlds.swarm.riders}
+          naiveRiders={tickData.worlds.naive?.riders}
           simTime={tickData.simTime}
           seed={tickData.seed}
           onSelectOrder={handleSelectOrder}
@@ -159,4 +290,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-

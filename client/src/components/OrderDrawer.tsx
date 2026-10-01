@@ -1,11 +1,11 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, CheckCircle, AlertTriangle, UserCheck, Store, ShieldCheck, Zap, Timer, Filter } from 'lucide-react';
 import { OrderSnapshot, DecisionRecord } from '../types';
 import { formatSimTime, formatDuration } from '../lib/format';
 
 interface OrderDrawerProps {
   order: OrderSnapshot | null;
-  world: 'baseline' | 'swarm';
+  world: 'naive' | 'baseline' | 'swarm';
   onClose: () => void;
 }
 

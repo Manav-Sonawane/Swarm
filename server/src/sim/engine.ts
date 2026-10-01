@@ -161,9 +161,12 @@ export class SimEngine {
     }
   }
 
-  /** Per-order events from the visible worlds; the headless Naive world's are dropped. */
+  /** Per-order events from all three visible worlds (Naive, Baseline, Swarm). */
   private drainWorldEvents(): EventPayload[] {
-    this.worlds.naive.drainEvents();
-    return [...this.worlds.baseline.drainEvents(), ...this.worlds.swarm.drainEvents()];
+    return [
+      ...this.worlds.naive.drainEvents(),
+      ...this.worlds.baseline.drainEvents(),
+      ...this.worlds.swarm.drainEvents(),
+    ];
   }
 }
