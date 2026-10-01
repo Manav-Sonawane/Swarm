@@ -5,6 +5,21 @@
 
 ---
 
+## 0. Scope: How We Read the Problem Statement
+
+- **Core deliverable:** the dynamic allocation + routing algorithm (Requirement 3 calls it "the core challenge").
+- **Supporting prototype:** just enough simulation and UI to feed it orders, riders, stores, inventory and disruptions, and to *show* its decisions. An algorithm alone (a function or notebook) would under-deliver.
+- **Not required:** a customer e-commerce site (login, payments, product browsing, checkout).
+- **The decision is coupled:** order → dark store → rider → position in the rider's route. The nearest rider may belong to a store without stock; the nearest store may have a packing queue; the shortest route may overload one rider while another could batch the order. All four are chosen together.
+- **Effort split:** ~60% algorithm + simulation, ~25% visualization + dashboard, ~15% data flow. When cutting, protect the algorithm and the comparison first.
+
+**Three screens:**
+1. **Setup:** riders per store, demand rate, packing slots, traffic/weather, seed.
+2. **Live operations:** map + tables showing assignments, routes, ETAs, batching and reassignment events.
+3. **Results:** Swarm vs two baselines on reliability, speed, efficiency and decision time.
+
+---
+
 ## 1. The Real Problem (Chembur Reality)
 
 **What the customer sees:**
@@ -138,50 +153,57 @@ Express = 10 min total − 2 min packing = 8 min of riding. 1.2 km × 1.3 = 1.56
 
 ---
 
-## 5. Allocation Algorithm (Per Store)
+## 5. Allocation Algorithm: Rolling-Horizon Insertion
 
-### **Input:** Orders to allocate, riders available
+One allocator decides **store + rider + route position** for each order. Shortest-path methods (A*, Dijkstra) only give travel time between two points; they don't choose the store, rider, batch or drop order. The Hungarian algorithm is not used: it matches one order to one rider and can't express batching.
 
-### **Step 1: Order Triage**
-- Separate into express (tight slack) and regular (relaxed slack)
-- Express: process first, dispatch aggressively (solo if needed)
-- Regular: buffer and batch (max 4 per batch)
+### When it runs
+- On every **new order** and every **disruption** (monsoon, store/rider offline, cancellation, stock-out).
+- On every **epoch** (`EPOCH_SEC` = 10 sim-s) for held orders.
+- A broader **rebalance** every `REBALANCE_SEC` (60 sim-s), see Step 8.
 
-### **Step 2: Packing Queue Prioritization**
-Orders waiting to be packed are re-ordered:
-- **Primary:** By slack (urgent first)
-- **Secondary:** By zone (batch nearby drops together)
+### The ETA model
+```
+ETA = packing delay       (orders ahead in queue / packing slots × pack time + own pack time)
+    + rider arrival       (rider → store, or 0 if already there)
+    + delivery travel     (store → drops in sequence, up to this order)
+    + expected disruption (traffic × weather multipliers, §3)
+```
+**Feasibility uses a risk-padded ETA:** travel legs × `ETA_RISK_PAD` (1.15 ≈ 85th percentile). Riders still move at the expected speed; the pad only makes promises safer. Packing delay counts as much as distance: a store 500 m away with a 6-min queue loses to one 2 km away that can dispatch now.
 
-Packers see a queue like: `[Versova_Urgent, Versova_Relaxed, Juhu_Urgent, ...]`
+### Steps
+1. **Candidate stores:** within the 3 km geofence and holding stock for every item. Keep the best `CANDIDATE_STORES` (3) by packing delay + travel.
+2. **Candidate riders:** not offline, below capacity, not yet departed. Any orders they already hold must be from the same store.
+3. **Insertion:** for each (store, rider) pair, insert the order into the rider's trip and try every drop sequence (≤4 drops → ≤24 permutations).
+4. **Hard deadline filter:** discard any option where **any** order on the trip, new or existing, misses its promise under the padded ETA. Deadlines are constraints, not score weights; otherwise a cheap but already-late option can win.
+5. **Score the feasible options:** `cost = insertion seconds + W_LOAD × rider load − batching saving`; ties go to the option with more minimum slack. A batch is only possible here if every affected order stays feasible.
+6. **Assignment order:** the most urgent orders go first, and among those, the highest *regret* (2nd-best cost − best cost), so scarce riders go to orders with the fewest alternatives. Rider state is updated after each assignment before the next order is evaluated.
+7. **No feasible option:**
+   - New order → the promise is extended upfront (§4, USP 0).
+   - Already-promised order → assign the option that minimizes the worst lateness, and flag it **at-risk**.
+8. **Rebalance with a freeze window:** every `REBALANCE_SEC`, reconsider orders that are assigned but not picked up.
+   - **Frozen** (never moved): rider at the store or departed, or within `FREEZE_DIST_KM` (0.3 km) of the store.
+   - **Move** only if the new option saves ≥ `REASSIGN_MIN_GAIN_SEC` (60 s) or turns an at-risk order feasible. This prevents churn: re-planning on every event makes operations unstable.
+   - Every move counts as a **reassignment** (metric).
+9. **Hold for batching:** an order may wait one epoch for a batch partner only if its slack after the best solo option > `HOLD_SLACK` (240 s) and it is younger than `MAX_HOLD` (60 s). Waiting has an opportunity cost.
+10. **Rider departure:** leave when all orders are packed AND (capacity full OR min over the trip of `promisedBy − projected drop ETA` < `DEPART_SLACK`, 120 s). Slack is measured against the projected *drop* time, not "now".
+11. **Decision time:** time every allocator call (wall-clock ms). Budget: < `DECISION_BUDGET_MS` (200 ms) per call, well within "decisions within seconds". Reported as a metric.
 
-### **Step 3: Allocation**
+### Packing queue order (stretch)
+Within a store, pack by slack (most urgent first), then group by zone so orders for the same trip finish together.
 
-**For express orders (tight):**
-- Slack < 1 min? Dispatch immediately to nearest available rider. Solo trip.
-- Slack >= 1 min? Hold in buffer.
+### Comparison allocators (same orders, same disruptions)
+| Allocator | Rule |
+|---|---|
+| **Naive** | Nearest available rider to the customer; the order is packed at that rider's home store. Ignores stock and packing queue: a missing item = failed delivery. Solo trips. |
+| **Baseline** | Nearest *stocked* store + nearest free rider, FIFO, solo trips. |
 
-**For regular orders (relaxed):**
-- Buffer up to 4 orders
-- When buffer fills or oldest order's slack hits 1 min:
-  - **Global bipartite matching:** find the assignment of (orders, riders) that minimizes max delivery time
-  - Simplest: greedy with lookahead (sort by slack + regret, assign best first)
-  - Optimal: Hungarian algorithm (if time permits)
-
-**For each (order, rider) assignment:**
-- Build the rider's new trip: store → pickup → [drop sequence] → return to store
-- Optimize drop order: try all permutations (3–4 drops = 6–24 combos), pick fastest
-- Check feasibility: every order in the trip still meets its deadline?
-  - Feasible → assign
-  - Infeasible → pull the order back, mark as at-risk
-
-### **Step 4: Rider Departure**
-A rider leaves the store when:
-- All orders in their trip are packed, AND
-- (Capacity is full OR min slack on the trip < 120 seconds)
+All three get the **same promise** per order by default (classified once on the shared stream), so the comparison measures allocation, not promise-setting. `BASELINE_PROMISES_10_MIN=true` makes Naive + Baseline promise 10 min to everyone, for the over-promising contrast in §9.
+| **Swarm** | The algorithm above. |
 
 ---
 
-## 6. Five Core USPs
+## 6. USPs (in priority order)
 
 ### **USP 0: Feasibility Honesty** (Foundation)
 - Don't promise 10 min if it's actually 20 min
@@ -189,32 +211,31 @@ A rider leaves the store when:
 - Show it on the UI: green (promise-able), yellow (extended), red (rejected)
 - **Why:** Judges see product thinking. You're not blaming riders; you're being honest with customers.
 
-### **USP 1: Packing Queue Intelligence**
-- Orders in queue are prioritized by slack (urgency) + zone (batching)
-- Packers batch by destination so nearby drops go together
-- Live metric: queue depth (Baseline explodes to 20+, Swarm stays at 5–8)
+### **USP 1: Coupled Decision with Hard Deadlines**
+- Store, rider and drop sequence are chosen together (§5), not one after another
+- Infeasible options are removed *before* scoring, so a cheap-but-late option can never win
+- Batches only form when every order on the trip stays on time
 
-### **USP 2: Multi-Rider Global Matching** (Per Store)
-- Don't assign orders one-by-one to riders
-- Instead: match multiple orders to multiple riders simultaneously
-- Minimize max delivery time (no rider martyred)
-- Ensures fairness and on-time delivery
+### **USP 2: Packing-Aware Routing**
+- Packing delay is part of every ETA, so a busy nearby store can lose to a free farther one
+- Live metric: packing queue depth per store
+- Stretch: pack in slack + zone order (§5)
 
-### **USP 3: Demand Forecasting**
-- If last 5 minutes had 3× normal order rate, predict next 5 minutes will too
-- Alert packers: "Surge incoming, increase batch size"
-- Proactively size rider dispatch (send 4 orders instead of 3)
-
-### **USP 4: Rider Fatigue Routing** (Per Store)
-- Track deliveries per rider (per shift)
-- As a rider approaches fatigue (7+ deliveries in 2 hours), assign shorter trips or nearby zones
-- Live fairness metric: std-dev of deliveries per rider (lower = fairer)
-
-### **USP 5: Real-Time Adaptation on Disruption**
-- Monsoon? ETAs jump 50% → extend promise windows, re-calculate feasibility
-- Store goes offline? Release all its pending orders, re-assign to next-nearest store
+### **USP 3: Stable Real-Time Adaptation**
+- Monsoon? ETAs jump 50% → re-check feasibility, extend new promises
+- Store offline? Release its unpacked orders, re-assign to the next-nearest store
 - Rider offline? Re-allocate their orders to available riders
-- Traffic surge? Re-route remaining drops, notify customers of new ETAs
+- Cancellation / stock-out? Remove from trips and queues, re-plan affected riders
+- Rebalance uses a **freeze window** so riders aren't reshuffled constantly; the reassignment count is shown
+
+### **USP 4: Measured, Not Claimed**
+- Three-way comparison: Naive vs Baseline vs Swarm on the same seed
+- Decision time per allocator call shown live (ms)
+- Reliability first: on-time % and worst-case lateness lead the dashboard, average speed comes after
+
+### **Stretch (cut first if behind)**
+- **Demand forecasting:** if the last 5 minutes had 3× the normal order rate, expect the same; hold for batches more readily
+- **Rider fatigue routing:** after 7+ deliveries in 2 hours, prefer shorter trips; fairness std-dev already tracked
 
 ---
 
@@ -246,25 +267,30 @@ A rider leaves the store when:
 
 ---
 
-## 8. Metrics (Per Store + Global)
+## 8. Metrics (Global + Per Store), for all three allocators
 
-**Per-store:**
-- On-time rate (%)
-- Avg delivery time (min)
-- P90 delivery time (min)
-- Packing queue depth (orders)
+**Headline (reliability first):**
+- On-time delivery rate (%)
+- Worst-case lateness: P90 and max lateness (min)
+- Delayed / failed deliveries (count)
+
+**Speed & efficiency:**
+- Avg and P90 delivery time (min)
+- Km travelled: total and per order
 - Orders per trip (batching rate)
 - Rider utilization (active time / shift time)
-- Fairness std-dev (std-dev of deliveries per rider)
-- Orders feasible / regular / infeasible
 
-**Global:**
-- Total on-time rate (weighted across stores)
-- Total riders active
-- Total orders delivered
-- Peak queue depth (across all stores)
+**Stability & compute:**
+- Reassignment count
+- Decision time per allocator call: avg and max (ms)
 
-**Comparison:** Baseline vs Swarm side by side
+**Operations:**
+- Packing queue depth (per store, and peak across stores)
+- Orders by class: express / regular / infeasible
+- Order density per zone (orders per store zone)
+- Fairness std-dev (deliveries per rider)
+
+**Comparison:** Naive vs Baseline vs Swarm, same seed and disruptions. The live view shows Baseline | Swarm maps; Naive runs headless and appears in the Results screen.
 
 ---
 
@@ -287,9 +313,9 @@ A rider leaves the store when:
 4. **Press "store offline":**
    - Baseline: that store's orders pile up
    - Swarm: immediately reroutes orders to nearest store, re-allocates riders
-5. **Final scoreboard:** Swarm wins on on-time %, on-at-risk count, queue depth, fairness
+5. **Results screen:** Naive vs Baseline vs Swarm: on-time %, worst lateness, failed deliveries, km per order, reassignments, decision time (ms)
 
-### **Key moment:** Click a late order in Baseline, then the same order in Swarm. Show the explainability: why Baseline sent a solo rider (greedy), why Swarm batched it (global matching).
+### **Key moment:** Click a late order in Baseline, then the same order in Swarm. Show the explainability: why Baseline sent a solo rider (greedy), why Swarm batched it (both orders stayed feasible, and the batch saved X seconds).
 
 ---
 
@@ -300,8 +326,9 @@ A rider leaves the store when:
 │                                                                        │
 │  SimClock ──tick──► World (multi-store state)                         │
 │      │              OrderGenerator (seeded Poisson, shared)           │
-│      │              BaselineAllocator (per store)                     │
-│      │              SwarmAllocator (per store + global coordination) │
+│      │              NaiveAllocator (headless, metrics only)           │
+│      │              BaselineAllocator (greedy, solo trips)            │
+│      │              SwarmAllocator (rolling-horizon insertion)        │
 │      └──► ScenarioEngine (monsoon, offline, surge, etc.)             │
 │                MetricsEngine (per-store + global metrics)             │
 │                emits: tick snapshots, events, decisions               │
@@ -314,8 +341,8 @@ A rider leaves the store when:
 │    - Rider dots (colored by store + status)                           │
 │    - Order dots (green=on-time, yellow=at-risk, red=late)            │
 │    - Rider routes (polylines, re-drawn on re-allocation)             │
-│  Split layout: Baseline | Swarm                                      │
-│  Metrics panel: per-store cards + global comparison                  │
+│  Screens: Setup | Live operations (Baseline | Swarm maps) | Results │
+│  Results: Naive vs Baseline vs Swarm comparison table + charts      │
 │  Scenario buttons + SimControls (play/pause/speed/seed)              │
 │  Order drawer → explainability (why this rider? why this store?)    │
 └───────────────────────────────────────────────────────────────────┘
@@ -345,10 +372,16 @@ All in `config.ts`:
 - `RIDERS_PER_STORE` (6)
 - `PACK_TIME_SEC` (120)
 - `CAPACITY_PER_TRIP` (3–4 orders)
-- `SLACK_THRESHOLD_EXPRESS` (60 sec)
-- `SLACK_THRESHOLD_REGULAR` (120 sec)
-- `BUFFER_SIZE_MAX` (4 orders)
-- `DEPOT_RETURN_THRESHOLD` (min slack to leave store = 120 sec)
+- `GEOFENCE_KM` (3)
+- `CANDIDATE_STORES` (3)
+- `EPOCH_SEC` (10)
+- `REBALANCE_SEC` (60)
+- `FREEZE_DIST_KM` (0.3)
+- `REASSIGN_MIN_GAIN_SEC` (60)
+- `HOLD_SLACK` (240 sec) / `MAX_HOLD` (60 sec)
+- `DEPART_SLACK` (120 sec, measured against projected drop ETA)
+- `ETA_RISK_PAD` (1.15)
+- `DECISION_BUDGET_MS` (200)
 - `TRAFFIC_MULTIPLIER_PEAK` (1.3)
 - `TRAFFIC_MULTIPLIER_MONSOON` (1.5)
 - `BASE_SPEED_KMH` (12)
@@ -360,7 +393,9 @@ All in `config.ts`:
 ## 13. Non-Goals
 
 - Real routing engines (OSRM, Google Maps API)
-- Customer-facing app, payments, auth
+- Customer e-commerce site: login, payments, product browsing, checkout
+- Real GPS, inventory-system or live traffic integrations (the simulator generates these events)
+- Exact solvers (MILP / exhaustive search) that can't decide within seconds
 - ML-based demand forecasting (simple moving average is enough)
 - Mobile-first design (web is the medium)
 
@@ -369,10 +404,11 @@ All in `config.ts`:
 ## 14. Success Criteria
 
 At the end of 5 hours:
-- [ ] Multi-store setup working (orders routed to nearest viable store)
-- [ ] Baseline allocator working (greedy, no optimization)
-- [ ] Swarm allocator working (global matching, packing queue smarts)
-- [ ] Web UI shows both side by side, map visible, metrics live
+- [ ] Multi-store setup working (orders routed to nearest viable store, stock checked)
+- [ ] Naive and Baseline allocators working as comparisons
+- [ ] Swarm allocator working (coupled store + rider + route, hard deadlines, freeze-window rebalance)
+- [ ] Three screens: Setup, Live operations (side-by-side maps), Results
 - [ ] At least 3 scenarios work (monsoon, store offline, surge)
-- [ ] Swarm visibly beats Baseline on on-time % and queue depth
+- [ ] Swarm beats both baselines on on-time % and worst-case lateness
+- [ ] Decision time per call shown and under 200 ms
 - [ ] Demo runs for 90 seconds without restart

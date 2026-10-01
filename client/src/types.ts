@@ -70,7 +70,7 @@ export interface TickPayload {
 
 export interface EventPayload {
   simTime: number;
-  world: 'baseline' | 'swarm' | 'both';
+  world: 'naive' | 'baseline' | 'swarm' | 'both' | 'all';
   kind: string;
   message: string;
 }

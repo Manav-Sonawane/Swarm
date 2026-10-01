@@ -1,6 +1,6 @@
 # BUGS.md — Fix before continuing the implementation plan
 
-> These are bugs in the code we took from the prototype. Fix the **P0** items before starting Phase 2/3 work in `IMPLEMENTATION.md`: until they are fixed, the Baseline vs Swarm comparison isn't meaningful.
+> These are bugs in the code we took from the prototype. Fix the **P0** items (IMPLEMENTATION.md Phase 1) before starting Phase 2: until they are fixed, the Baseline vs Swarm comparison isn't meaningful.
 > Found by reading the code and by running the server headless (seed 42, 30× speed, ~20–25 sim-minutes from 19:00).
 
 **Evidence run (before any fixes):**
@@ -11,6 +11,44 @@
 | Swarm | 4 | **0%** | 67 | 48 | 1 | 100% |
 
 Swarm, the "smart" allocator, currently loses badly to Baseline. Bugs 1–2 and 5 are the main causes.
+
+## Status (2026-10-01, after Phase 1 + Phase 2 Person A)
+
+Line numbers below refer to the code *before* the fixes. Several fixes started in commit `4307167` (Aryan) and were folded into the Phase 2 rewrite.
+
+| # | Status | Where it's fixed now |
+|---|---|---|
+| 1 | ✅ Fixed | `world.ts` `shouldDepart`: slack vs projected drop ETA (risk-padded), plus a `MAX_HOLD` cap on waiting at the store |
+| 2 | ✅ Fixed | `feasibility.ts` `classifyOrder`: class + promise from the best stocked store in the geofence, once on the shared stream |
+| 3 | ✅ Fixed | `getSnapshot(now)`; history grows, utilization < 100% |
+| 4 | ✅ Fixed | `world.ts` packing loop with `packStartedAt`; `forecastQueue` models the queue for ETAs |
+| 5 | ✅ Fixed | `world.ts` `refreshProjections`: unassigned = packing delay + travel from best stocked store |
+| 6 | ✅ Fixed | `scenarios.ts`: seeded, same riders in every world; released orders leave every queue; picked orders → `failed` |
+| 7 | ✅ Fixed | `insertion.ts` / `swarm.ts`: `tripStoreId` on the working rider state |
+| 8 | ✅ Fixed | Routes and decision stops are copied, never shared |
+| 9 | ✅ Fixed | ETAs and `isLate` refreshed every tick; delivered orders get final `isLate` |
+| 10 | ✅ Fixed | `ScenarioEngine.reset(seed)`; active scenario derived from weather + spike end time; `seed ?? current` |
+| 11 | ✅ Fixed | Seeded pick of order IDs unpicked in every world |
+| 12 | ✅ Fixed | Returning riders use the road factor |
+| 13 | ✅ Fixed | Stock reserved on assignment, restored if released before pickup |
+| 14 | ✅ Fixed | Scoreboard sign + "Equal" (commit `4307167`) |
+| 15 | ✅ Fixed | Mock data has 15 stores (commit `4307167`) |
+
+Also fixed while verifying: **orders per trip** counted in-progress trips (it read < 1); **on-time %** now counts every order whose outcome is decided (delivered, failed, or undelivered past its promise). Counting only deliveries rewarded leaving late orders undelivered.
+
+**After fixes** (`npm run bench`, seed 42, 60 sim-min from 19:00):
+
+| Scenario | Naive | Baseline | Swarm | Swarm max lateness vs Baseline |
+|---|---|---|---|---|
+| No disruptions | 64.6% | 75.2% | **84.1%** | 566 s vs 966 s |
+| Spike @35m | 50.5% | 59.6% | **63.0%** | 689 s vs 966 s |
+| Riders offline @30m + cancel @40m | 63.3% | 74.8% | **83.2%** | 566 s vs 966 s |
+| Monsoon @20m | 53.9% | **53.9%** | 50.0% | 1256 s vs 1536 s |
+| All four | 40.3% | **45.6%** | 43.5% | 1286 s vs 1566 s |
+
+Decision time: Swarm avg ~0.5 ms, max ~8–10 ms headless (~19 ms first call live, JIT warm-up), against a 200 ms budget. Same seed twice gives identical results.
+
+**Open:** under the monsoon Swarm is ~3–4 points behind Baseline on on-time %, though better on worst lateness. Late orders are mostly ones already planned or in flight when travel times jump 50%. Re-planning undeparted trips on a disruption is the Phase 3 rebalance (`rebalance.ts`), so this is left for Checkpoint 3.
 
 ---
 
@@ -102,7 +140,16 @@ Swarm, the "smart" allocator, currently loses badly to Baseline. Bugs 1–2 and 
 
 ## Not bugs (tracked in IMPLEMENTATION.md, not here)
 
-Contract alignment (snapshot field names, `/api/stores`, scenario names like `store_offline`), global matching (`matching.ts`), slack + zone packing order (`packing.ts`), fatigue routing, demand forecasting, and synced map pan/zoom.
+Contract alignment (snapshot field names, `/api/stores`, scenario names like `store_offline`), the Naive comparison world (`naive.ts`), freeze-window rebalance (`rebalance.ts`), risk-padded ETAs (`ETA_RISK_PAD`), the Setup and Results screens, slack + zone packing order (`packing.ts`), fatigue routing, demand forecasting, and synced map pan/zoom.
+
+## Measurements to add while fixing
+
+These are needed to verify the fixes and are part of the contract (IMPLEMENTATION.md `Metrics`). Add them in `metrics.ts` as you touch it:
+- **Decision time:** wrap every allocator call with `performance.now()`; report `decisionMsAvg` / `decisionMsMax` (budget: 200 ms per call).
+- **Worst-case lateness:** `p90LatenessSec` and `maxLatenessSec` over delivered orders (lateness = `max(0, deliveredAt − promisedBy)`).
+- **Failed deliveries:** `ordersFailed` (stranded, stock-out, cancelled by the system).
+- **Km travelled:** `kmTotal` alongside the existing `kmPerOrder`.
+- **Reassignments:** `reassignments` counter. It stays 0 until `rebalance.ts` exists, but the field should be there.
 
 ## Done when
 
@@ -110,5 +157,7 @@ On seed 42, from a fresh reset, at 30× for ~20 sim-minutes:
 - The metrics history grows (more than 1 point) and utilization is below 100%.
 - Packing queue depth is non-zero under load.
 - No order stays in `packed` or `picked` for longer than its trip should take.
-- Swarm on-time % ≥ Baseline on-time %.
-- Running the same seed twice gives the same numbers.
+- Swarm on-time % ≥ Baseline on-time %, **and** Swarm max lateness ≤ Baseline max lateness.
+- `decisionMsMax` < 200 ms for every allocator.
+- After a rider-offline event, every released order ends up delivered or counted in `ordersFailed`, with none stuck.
+- Running the same seed twice gives the same numbers, including after a scenario is triggered.

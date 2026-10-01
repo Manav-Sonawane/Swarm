@@ -1,95 +1,113 @@
-import { DarkStore, Rider, Order, Assignment, DecisionRecord, Stop } from '../types';
+import { DarkStore, Rider, Order, Assignment, DecisionRecord } from '../types';
+import { CONFIG } from '../config';
 import { selectCandidateStores } from '../sim/store-select';
-import { haversineKm, travelTimeSec } from '../sim/travel';
+import { haversineKm } from '../sim/travel';
+import { forecastQueue, planTrip } from './feasibility';
 
+/** Riders with no orders that are free to take a new solo trip. */
+export function freeRiders(riders: Rider[]): Rider[] {
+  return riders.filter(r => (r.status === 'idle' || r.status === 'returning') && r.assignedOrderIds.length === 0);
+}
+
+/** Builds a solo-trip assignment (rider -> store -> customer) with its decision record. */
+export function soloAssignment(
+  order: Order,
+  rider: Rider,
+  store: DarkStore,
+  readyAt: number,
+  now: number,
+  weatherMult: number,
+  reason: string
+): Assignment {
+  const drop = [{ orderId: order.id, loc: order.loc, promisedBy: order.promisedBy }];
+  const exp = planTrip(rider.loc, now, store, readyAt, drop, weatherMult);
+  const pad = planTrip(rider.loc, now, store, readyAt, drop, weatherMult, CONFIG.ETA_RISK_PAD);
+  const eta = exp.dropEtas.get(order.id)!;
+  const padEta = pad.dropEtas.get(order.id)!;
+  const feasible = padEta <= order.promisedBy;
+
+  const chosen = {
+    riderId: rider.id,
+    storeId: store.id,
+    totalCost: eta - now,
+    breakdown: {
+      travelSec: exp.rideSec,
+      insertionSec: exp.rideSec,
+      latenessPenalty: Math.max(0, padEta - order.promisedBy),
+      loadPenalty: 0,
+      packWaitSec: Math.max(0, exp.departAt - exp.pickupEta),
+      batchSavingSec: 0,
+    },
+    eta,
+    feasible,
+    maxLatenessSec: Math.max(0, padEta - order.promisedBy),
+    minSlackSec: order.promisedBy - padEta,
+    tripStops: exp.stops,
+  };
+
+  const decision: DecisionRecord = {
+    decidedAt: now,
+    chosen: { ...chosen, tripStops: exp.stops.map(s => ({ ...s, loc: { ...s.loc } })) },
+    runnersUp: [],
+    reason,
+    chosenStore: store.id,
+    chosenRider: rider.id,
+    storeOptions: [{ storeId: store.id, eta, queueDepth: store.packQueue.length, feasible }],
+    riderOptions: [{ riderId: rider.id, insertionTime: exp.rideSec, tripEta: eta, feasible }],
+    batchSavingSec: 0,
+    rejectedInfeasible: 0,
+    decisionMs: 0,
+  };
+
+  return {
+    orderId: order.id,
+    storeId: store.id,
+    riderId: rider.id,
+    decision,
+    newRoute: exp.stops.map(s => ({ ...s, loc: { ...s.loc } })),
+  };
+}
+
+/** Greedy baseline: FIFO, nearest stocked store in the geofence + nearest free rider, solo trips. */
 export function runBaselineAllocation(
   pendingOrders: Order[],
   riders: Rider[],
   stores: DarkStore[],
+  orders: Map<string, Order>,
   nowSimTime: number,
   weatherMult: number = 1.0
 ): Assignment[] {
   const assignments: Assignment[] = [];
-
-  // Sort FIFO by createdAt
-  const sortedOrders = [...pendingOrders].sort((a, b) => a.createdAt - b.createdAt);
-
-  const availableRiders = riders.filter(r => r.status === 'idle' && r.assignedOrderIds.length === 0);
+  const sortedOrders = [...pendingOrders].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+  const available = freeRiders(riders);
+  const extraQueued = new Map<string, number>();
 
   for (const order of sortedOrders) {
-    if (availableRiders.length === 0) break;
+    if (available.length === 0) break;
 
-    // 1. Select nearest store with full stock
-    const candidateStores = selectCandidateStores(order, stores, nowSimTime, weatherMult);
-    if (candidateStores.length === 0) continue;
+    const cands = selectCandidateStores(order, stores, orders, nowSimTime, weatherMult, { rank: 'travel', limit: 1, extraQueued });
+    if (cands.length === 0) continue;
+    const store = cands[0].store;
 
-    const chosenStore = candidateStores[0].store;
-
-    // 2. Find nearest idle rider to the store
-    let nearestRider: Rider | null = null;
-    let minDistance = Infinity;
-    let nearestIndex = -1;
-
-    for (let i = 0; i < availableRiders.length; i++) {
-      const rider = availableRiders[i];
-      const dist = haversineKm(rider.loc, chosenStore.loc);
-      if (dist < minDistance) {
-        minDistance = dist;
-        nearestRider = rider;
-        nearestIndex = i;
+    let idx = -1;
+    let minDist = Infinity;
+    available.forEach((r, i) => {
+      const d = haversineKm(r.loc, store.loc);
+      if (d < minDist || (d === minDist && r.id < available[idx].id)) {
+        minDist = d;
+        idx = i;
       }
-    }
-
-    if (!nearestRider || nearestIndex === -1) continue;
-
-    // Remove rider from available pool for this tick
-    availableRiders.splice(nearestIndex, 1);
-
-    // Compute route timings
-    const travelToStoreSec = travelTimeSec(nearestRider.loc, chosenStore.loc, nowSimTime, weatherMult, chosenStore.id);
-    const pickupEta = nowSimTime + travelToStoreSec;
-    const packWaitSec = (chosenStore.packQueue.length / Math.max(1, chosenStore.packingSlots)) * chosenStore.packTimeSec;
-    const storeDeparture = pickupEta + packWaitSec;
-    const dropTravelSec = travelTimeSec(chosenStore.loc, order.loc, storeDeparture, weatherMult, chosenStore.id);
-    const dropEta = storeDeparture + dropTravelSec;
-
-    const stops: Stop[] = [
-      { type: 'pickup', storeId: chosenStore.id, loc: chosenStore.loc, eta: pickupEta },
-      { type: 'drop', orderId: order.id, loc: order.loc, eta: dropEta },
-    ];
-
-    const isFeasible = dropEta <= order.promisedBy;
-    const latenessPenalty = Math.max(0, dropEta - order.promisedBy) * 5.0;
-
-    const decision: DecisionRecord = {
-      decidedAt: nowSimTime,
-      chosen: {
-        riderId: nearestRider.id,
-        storeId: chosenStore.id,
-        totalCost: travelToStoreSec + dropTravelSec + latenessPenalty,
-        breakdown: {
-          travelSec: travelToStoreSec + dropTravelSec,
-          insertionSec: travelToStoreSec + dropTravelSec,
-          latenessPenalty,
-          loadPenalty: 0,
-          packWaitSec,
-          batchSavingSec: 0,
-        },
-        eta: dropEta,
-        feasible: isFeasible,
-        tripStops: stops,
-      },
-      runnersUp: [],
-      reason: `Greedy Baseline: Nearest store (${chosenStore.name}) + nearest idle rider (${nearestRider.id})`,
-    };
-
-    assignments.push({
-      orderId: order.id,
-      storeId: chosenStore.id,
-      riderId: nearestRider.id,
-      decision,
-      newRoute: stops,
     });
+    const rider = available.splice(idx, 1)[0];
+
+    const extra = extraQueued.get(store.id) ?? 0;
+    const readyAt = forecastQueue(store, orders, nowSimTime).nextFinishAt(extra);
+    extraQueued.set(store.id, extra + 1);
+
+    assignments.push(
+      soloAssignment(order, rider, store, readyAt, nowSimTime, weatherMult,
+        `Greedy Baseline: nearest stocked store (${store.name}) + nearest free rider (${rider.id}), solo trip.`)
+    );
   }
 
   return assignments;

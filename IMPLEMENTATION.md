@@ -1,6 +1,8 @@
 # IMPLEMENTATION.md — Swarm (5-Hour Hackathon, 2-Person Team)
 
-> Read `CONTEXT.md` first. This file covers *who builds what, in what order, and the sync contract*.
+> Read `CONTEXT.md` first (§0 scope, §5 algorithm). This file covers *who builds what, in what order, and the sync contract*.
+> Fix `BUGS.md` P0 items before anything else: the code imported from the prototype doesn't produce meaningful metrics until they are fixed.
+> **Effort split:** ~60% algorithm + simulation (Person A), ~25% visualization (Person B), ~15% data flow (shared).
 > **Platform:** Web app (Vite + React), not mobile.
 
 ---
@@ -9,7 +11,7 @@
 
 | | **Person A — Engine** | **Person B — Experience** |
 |---|---|---|
-| **Owns** | Simulator, allocators (baseline + Swarm), multi-store logic, disruptions, metrics | Web UI, map, metrics dashboard, controls, explainability, pitch deck |
+| **Owns** | Simulator, allocators (Naive + Baseline + Swarm), multi-store logic, disruptions, metrics | Web UI (Setup, Live operations, Results screens), map, explainability, pitch deck |
 | **Core skill** | Backend, algorithms, multi-store coordination | Frontend, UX, visualization |
 | **Deploys** | Server on `localhost:5000` | Client on `localhost:3000` (Vite dev server; port set in `vite.config.ts`, Vite's default is 5173) |
 
@@ -23,6 +25,7 @@
 Swarm/
 ├── CONTEXT.md
 ├── IMPLEMENTATION.md
+├── BUGS.md                       # fix P0 before Phase 2
 ├── server/
 │   ├── src/
 │   │   ├── index.ts              # express + socket.io bootstrap
@@ -39,23 +42,29 @@ Swarm/
 │   │   │   ├── travel.ts         # travel_time(), traffic_multiplier()
 │   │   │   └── store-select.ts   # geofence + select nearest viable store
 │   │   ├── alloc/
-│   │   │   ├── baseline.ts       # per-store greedy allocator
-│   │   │   ├── swarm.ts         # per-store smart allocator (global matching)
-│   │   │   ├── matching.ts       # bipartite matching / Hungarian
+│   │   │   ├── naive.ts          # comparison: nearest available rider, ignores stock + queue
+│   │   │   ├── baseline.ts       # comparison: nearest stocked store + nearest idle rider, solo
+│   │   │   ├── swarm.ts          # rolling-horizon insertion (CONTEXT §5)
+│   │   │   ├── insertion.ts      # insert order into a trip, try drop sequences, hard deadline check
+│   │   │   ├── rebalance.ts      # periodic rebalance with freeze window
 │   │   │   ├── packing.ts        # queue re-ordering (priority + zone)
-│   │   │   └── feasibility.ts    # order class + ETA calc
+│   │   │   └── feasibility.ts    # order class + risk-padded ETA
 │   │   ├── scenarios.ts          # monsoon, store-offline, rider-offline, surge
-│   │   └── metrics.ts            # on-time %, queue depth, utilization, fairness
+│   │   └── metrics.ts            # on-time %, lateness, km, reassignments, decision ms, …
 │   └── package.json
 └── client/
     ├── src/
-    │   ├── App.tsx               # top-level layout
+    │   ├── App.tsx               # screen switcher: Setup | Live operations | Results
     │   ├── socket.ts             # socket connection + mock mode
     │   ├── mock/
     │   │   └── mockStream.ts     # fake snapshots for offline dev
     │   ├── components/
-    │   │   ├── MapView.tsx       # one map (both worlds overlaid or split?)
-    │   │   ├── MetricsPanel.tsx  # per-store cards + global comparison
+    │   │   ├── SetupPanel.tsx    # screen 1: riders/store, demand, packing slots, traffic, seed
+    │   │   ├── MapView.tsx       # screen 2: one map per world (Baseline | Swarm), synced
+    │   │   ├── MetricsPanel.tsx  # screen 2: live headline metrics
+    │   │   ├── ResultsView.tsx   # screen 3: Naive vs Baseline vs Swarm table + charts
+    │   │   ├── Header.tsx        # clock, seed, active scenario, connection
+    │   │   ├── FinalScoreboardModal.tsx # end-of-run summary
     │   │   ├── ScenarioBar.tsx   # buttons: monsoon, offline, surge, etc.
     │   │   ├── SimControls.tsx   # play/pause/speed/seed
     │   │   ├── OrderDrawer.tsx   # explainability: why this store? why this rider?
@@ -81,9 +90,12 @@ socket.on('tick', (payload: TickPayload) => {
     running: boolean;
     seed: number;
     
+    activeScenario: string;
+
     worlds: {
       baseline: WorldSnapshot;
       swarm: WorldSnapshot;
+      naive: WorldSnapshot;     // metrics only: stores/riders/orders sent as []
     }
   }
 })
@@ -140,13 +152,30 @@ interface DecisionRecord {
   chosenRider: string;
   reason: string; // human-readable, e.g. "Nearest feasible store with lowest queue"
   storeOptions: { storeId: string; eta: number; queueDepth: number; feasible: boolean }[];
-  riderOptions: { riderId: string; insertionTime: number; tripEta: number }[];
+  riderOptions: { riderId: string; insertionTime: number; tripEta: number; feasible: boolean }[];
+  batchSavingSec: number;    // vs a solo trip
+  rejectedInfeasible: number; // options removed by the hard deadline filter
+  decisionMs: number;        // wall-clock time of the allocator call
 }
 
 interface Metrics {
+  // headline: reliability first
   onTimeRate: number;       // 0–1
+  p90LatenessSec: number;
+  maxLatenessSec: number;
+  ordersFailed: number;     // cancelled by the system, stock-outs, stranded
+  // speed & efficiency
   avgDeliverySec: number;
   p90DeliverySec: number;
+  kmTotal: number;
+  kmPerOrder: number;
+  // stability & compute
+  reassignments: number;
+  decisionMsAvg: number;
+  decisionMsMax: number;
+  // operations
+  ordersByClass: { express: number; regular: number; infeasible: number };
+  ordersPerZone: Record<string, number>; // storeId → orders
   ordersPacked: number;
   ordersDelivered: number;
   ordersPending: number;
@@ -171,8 +200,9 @@ interface MetricsHistoryPoint {
 ### From Client → Server
 
 ```typescript
-socket.emit('control', { action: 'play'|'pause'|'reset', speed?: number, seed?: number });
-socket.emit('scenario', { name: 'monsoon'|'store_offline'|'rider_offline'|'surge'|'clear' });
+socket.emit('control', { action: 'play'|'pause'|'reset', speed?: number, seed?: number,
+  setup?: { ridersPerStore?: number; ordersPerHour?: number; packingSlots?: number; traffic?: 'normal'|'peak' } }); // setup applies on reset
+socket.emit('scenario', { name: 'monsoon'|'store_offline'|'rider_offline'|'surge'|'cancel_burst'|'stockout'|'clear' });
 ```
 
 ### REST Endpoints
@@ -180,82 +210,79 @@ socket.emit('scenario', { name: 'monsoon'|'store_offline'|'rider_offline'|'surge
 ```
 GET /api/decision/:world/:orderId  → DecisionRecord | 404
 GET /api/stores                    → StoreSnapshot[]
-GET /api/export                    → { baseline, swarm, timestamp }
+GET /api/export                    → { naive, baseline, swarm, seed, setup, timestamp }
 ```
 
 ---
 
 ## Timeline & Tasks (5 Hours)
 
-### **Phase 1: Foundation (0–1h)** — Together
+The prototype import already covers the old "foundation" and "moving riders" phases, so the timeline starts from stabilising it.
 
-- [ ] Both: repo setup, install deps, agree on contract §2
-- [ ] A: express + socket.io bootstrap, emit dummy `tick` every 1 sec
-- [ ] B: Vite app, socket connection, `MOCK=true` mode replays mockStream.ts
-
-**Checkpoint 1 (1h):** B's UI shows fake orders/riders arriving from A's server.
-
----
-
-### **Phase 2: One Store, Moving (1–2.5h)**
+### **Phase 1: Stabilise (0–1h)**
 
 **Person A:**
-- [ ] `travel.ts`: haversine, `travelTime(from, to, now)` with traffic multiplier
-- [ ] `seed/stores.ts`: 15 stores (6 anchors + 9 fill-ins, see CONTEXT §2), locations, inventory (uneven)
-- [ ] `seed/riders.ts`: 6 riders per store (name, location, status)
-- [ ] `orderGenerator.ts`: seeded Poisson arrivals, zone-weighted distribution
-- [ ] `world.ts`: state machine, movement loop, delivery detection
-- [ ] `store-select.ts`: geofence (3 km), feasibility check, select nearest viable store
-- [ ] `feasibility.ts`: order class (express / regular / infeasible)
+- [x] `BUGS.md` P0 #1–#6 (departure slack, distance-based promises, metrics clock, real packing queue, at-risk estimate, rider-offline order loss)
 
 **Person B:**
-- [ ] `MapView.tsx`: Leaflet map, 15 store icons, rider dots, order dots
-- [ ] Split layout: Baseline (left), Swarm (right), synced zoom/pan
-- [ ] `SimControls.tsx`: play, pause, speed slider, seed input
-- [ ] Basic metric numbers (on-time %, queue depth) in text, not charts yet
+- [ ] Align client types and components to the contract above (`worlds.naive`, new `Metrics` fields, `DecisionRecord`)
+- [ ] `mockStream.ts`: 15 stores, all three worlds, so the UI can be built without the server
 
-**Checkpoint 2 (2.5h):** Real server drives real UI. Both worlds are alive, orders spawn and get assigned (using baseline allocator for both for now). Riders move on map.
+**Checkpoint 1 (1h):** `BUGS.md` "Done when" passes for the P0 items. Real server drives the UI.
 
 ---
 
-### **Phase 3: The Brains (2.5–4h)** — Hardest block
+### **Phase 2: Swarm Core + Comparisons (1–2.5h)**
 
 **Person A:**
-- [ ] `baseline.ts`: greedy per-store allocator (nearest store, nearest idle rider, solo trip)
-- [ ] `packing.ts`: queue re-ordering by slack + zone
-- [ ] `matching.ts`: bipartite matching (Hungarian or greedy-with-lookahead)
-- [ ] `swarm.ts`: smart allocator (store selection, global matching, drop re-ordering)
-- [ ] `scenarios.ts`: monsoon, store offline, rider offline, surge
+- [x] `feasibility.ts`: classes (express / regular / infeasible), promises from the risk-padded ETA
+- [x] `store-select.ts`: 3 km geofence + stock + packing delay, top `CANDIDATE_STORES`
+- [x] `insertion.ts` / `swarm.ts`: hard deadline filter (every order on the trip), score feasible only, regret ordering (CONTEXT §5 steps 1–7)
+- [x] Time every allocator call → `decisionMs` on decisions, `decisionMsAvg/Max` in metrics
+- [x] `naive.ts` + third headless world sharing the same order stream
+- [x] `BUGS.md` P1 #7–#9 (cross-store batch, erased route, stale ETA)
+
+**Person B:**
+- [ ] `SetupPanel.tsx`: riders/store, demand, packing slots, traffic, seed → `control: reset` with `setup`
+- [ ] Live operations: Baseline | Swarm maps with synced zoom/pan, order colours by class + risk, routes
+- [ ] Assignment table: order, store, rider, ETA vs promise, batched with
+- [ ] Headline metrics: on-time %, P90/max lateness, failed, decision ms
+
+**Checkpoint 2 (2.5h):** On seed 42, normal mode, Swarm on-time % ≥ Baseline; decision time visible and < 200 ms. Check with `cd server && npm run bench` (headless, all three worlds; add events like `-- 60 "20:monsoon"`).
+
+---
+
+### **Phase 3: Adaptation + Results (2.5–4h)** — Hardest block
+
+**Person A:**
+- [ ] `rebalance.ts`: every `REBALANCE_SEC`, freeze window, `REASSIGN_MIN_GAIN_SEC`, reassignment count + events
+- [ ] `scenarios.ts`: monsoon, store offline, rider offline, surge, cancellation, stock-out; same targets in every world (seeded; done for rider offline + cancel, `BUGS.md` #10–#11 fixed)
   - Monsoon: weather multiplier 1.5× (stacks with peak traffic 1.3×)
-  - Store offline: release orders, re-allocate to next-nearest
+  - Store offline: release unpacked orders, re-allocate to next-nearest
   - Rider offline: release orders, re-allocate
   - Surge: 3× order rate for 5 min
-- [ ] `metrics.ts`: on-time rate, queue depth, fairness std-dev, utilization
+- [ ] `metrics.ts`: lateness P90/max, failed, km total/per order, orders per zone, by class
 
 **Person B:**
-- [ ] `MetricsPanel.tsx`: Recharts line charts (on-time %, queue depth over time)
-- [ ] Per-store metric cards (queue, utilization, fairness)
-- [ ] Global comparison: Baseline vs Swarm side-by-side numbers
-- [ ] `OrderDrawer.tsx`: click order → show decision record (store options, rider options, reason)
-- [ ] `EventLog.tsx`: real-time event feed (order placed, assigned, delivered, late, etc.)
+- [ ] `ResultsView.tsx`: Naive vs Baseline vs Swarm table (reliability first) + on-time and lateness charts
+- [ ] `OrderDrawer.tsx`: store options, options removed by the deadline filter, batch saving, decision ms
+- [ ] `EventLog.tsx`: placed, assigned, batched, reassigned, at-risk, delivered late
 
-**Checkpoint 3 (4h):** **CRITICAL QUALITY GATE.** Swarm must visibly beat Baseline on seed 42 in normal mode (no disruptions) on: on-time %, at-risk count, queue depth. If Swarm is not winning, A tunes `config.ts` before moving forward. **Do NOT proceed without this.**
+**Checkpoint 3 (4h):** **CRITICAL QUALITY GATE.** On seed 42, normal + monsoon: Swarm beats **both** baselines on on-time % and worst-case lateness; max decision time < 200 ms. If not, A tunes `config.ts` before moving on. **Do NOT proceed without this.**
 
 ---
 
-### **Phase 4: Polish & Scenarios (4–5h)**
+### **Phase 4: Polish (4–5h)**
 
 **Person A:**
-- [ ] Fine-tune allocator constants if needed (from Checkpoint 3)
-- [ ] Test all 4 scenarios on seed 42 in sequence
-- [ ] REST endpoint for decision records
-- [ ] Export metrics as JSON
+- [ ] Tune constants from Checkpoint 3; run all scenarios on seed 42 in sequence
+- [ ] Stretch: `packing.ts` (slack + zone order), demand forecasting, fatigue routing
+- [ ] `BUGS.md` P2; `/api/export` with all three worlds
 
 **Person B:**
-- [ ] `ScenarioBar.tsx`: big buttons for each scenario + "clear" reset
-- [ ] Modal: final scoreboard (on-time %, at-risk, queue, fairness, orders delivered)
-- [ ] "Baseline vs Swarm" headline metric
-- [ ] Pitch deck (6 slides: problem, insight, algorithm, demo, results, future work)
+- [ ] `ScenarioBar.tsx` final buttons + "clear"
+- [ ] Final scoreboard / results polish
+- [ ] Pitch deck (6 slides: problem, the coupled decision, algorithm, demo, results incl. decision time, future work)
 
 **Checkpoint 4 (5h):** Demo script (§9 in CONTEXT.md) runs end-to-end without restart. Pitch deck ready. Code is clean enough to explain.
 
@@ -263,12 +290,13 @@ GET /api/export                    → { baseline, swarm, timestamp }
 
 ## What to Cut If Behind
 
-1. Per-store metrics (show only global)
-2. Fairness std-dev metric
-3. Scenario: surge, stockout (keep monsoon + offline)
+1. Stretch USPs: demand forecasting, fatigue routing
+2. `packing.ts` slack + zone ordering (keep the real FIFO queue)
+3. Per-store metrics (show only global)
 4. Event log (keep scenario buttons)
-5. Explainability drawer
-6. **Never cut:** multi-store logic, Swarm vs Baseline comparison, side-by-side map, on-time % metric
+5. Setup screen (run with fixed defaults + seed input)
+6. Explainability drawer
+7. **Never cut:** coupled store + rider + route allocation with hard deadlines, comparison against at least Baseline, on-time % + worst lateness, decision time metric, side-by-side map
 
 ---
 
@@ -288,16 +316,21 @@ GET /api/export                    → { baseline, swarm, timestamp }
 - **"Why not use Google Maps API?"** Consistency across both worlds, no latency, and it's a hackathon (WiFi may fail). Pre-computed distance matrix is more reliable.
 - **"Isn't 12 km/h too slow?"** It's door-to-door average, not cruising speed: signals, lanes, parking, finding the building. At peak it drops to ~9 km/h effective. It's also what makes the ~1.2 km express radius honest.
 - **"Why extend the promise window instead of assigning a solo rider?"** Because a solo rider 2.5 km away still takes ~23 minutes at peak. We'd be lying to the customer either way. Better to extend upfront.
-- **"How does Swarm beat Baseline?"** Swarm batches intelligently, respects feasibility, and re-optimizes on disruptions. Baseline is greedy and brittle.
+- **"Why not Dijkstra / A* / the Hungarian algorithm?"** Shortest-path gives travel time between two points; it doesn't choose the store, rider, batch or drop order. Hungarian matches one order to one rider and can't batch. We use rolling-horizon insertion with deadlines as hard constraints.
+- **"Is it fast enough for real time?"** Every allocator call is timed and shown live; the budget is 200 ms, and "decisions within seconds" is the requirement.
+- **"Why not re-optimize on every event?"** Constant reshuffling confuses riders. Assigned orders are only moved during a periodic rebalance, outside a freeze window, and only for a ≥60 s gain or to rescue an at-risk order. The reassignment count is on the dashboard.
+- **"Why should we trust the comparison?"** Same seed, same orders, same disruptions for all three allocators, including a naive nearest-rider baseline.
+- **"How does Swarm beat Baseline?"** Swarm picks store, rider and drop order together, never takes an option that breaks a promise, counts packing delay, and re-plans on disruptions without churning riders. Baseline is greedy and brittle.
 
 ---
 
 ## Success Criteria (At 5h)
 
 - [ ] Multi-store routing working (customers assigned to nearest viable store)
-- [ ] Baseline allocator working and visible on map
-- [ ] Swarm allocator visibly batching and beating Baseline
-- [ ] Web UI: side-by-side map, metrics, scenario buttons
+- [ ] Naive + Baseline allocators running on the same order stream
+- [ ] Swarm allocator visibly batching and beating both on on-time % and worst lateness
+- [ ] Web UI: Setup, Live operations (side-by-side map), Results; scenario buttons
+- [ ] Decision time per call shown, < 200 ms
 - [ ] At least monsoon scenario works (and Swarm adapts)
 - [ ] Demo runs for 90 seconds without crash
 - [ ] Pitch deck ready

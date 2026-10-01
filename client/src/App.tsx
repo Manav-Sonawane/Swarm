@@ -23,7 +23,7 @@ const App: React.FC = () => {
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
     const onTick = (data: TickPayload) => setTickData(data);
-    const onEvent = (evt: EventPayload) => setEvents(prev => [...prev.slice(-49), evt]);
+    const onEvent = (evt: EventPayload) => setEvents(prev => [...prev.slice(-99), evt]);
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);

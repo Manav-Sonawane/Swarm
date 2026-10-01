@@ -1,158 +1,120 @@
-import { World } from './sim/world';
+import seedrandom from 'seedrandom';
+import { World, isTerminal } from './sim/world';
 import { OrderGenerator } from './sim/orderGenerator';
 import { ScenarioName, EventPayload } from './types';
 import { CONFIG } from './config';
 
-export class ScenarioEngine {
-  private activeScenario: ScenarioName = 'normal';
-  private weatherMult: number = 1.0;
+const SPIKE_DURATION_SEC = 600;
 
-  public getActiveScenario(): ScenarioName {
-    return this.activeScenario;
+export class ScenarioEngine {
+  private weatherMult: number = 1.0;
+  private spikeEndsAt: number = -Infinity;
+  private rng: seedrandom.PRNG = seedrandom('swarm-scenario-0');
+
+  constructor(seed: number = CONFIG.DEFAULT_SEED) {
+    this.reset(seed);
+  }
+
+  /** Back to clear weather, no spike, and a scenario RNG derived from the seed (reproducible runs). */
+  public reset(seed: number): void {
+    this.weatherMult = 1.0;
+    this.spikeEndsAt = -Infinity;
+    this.rng = seedrandom(`swarm-scenario-${seed}`);
+  }
+
+  /** Persistent conditions only; one-off events (offline, stockout, cancel) don't stay "active". */
+  public getActiveScenario(nowSimTime: number): ScenarioName {
+    if (nowSimTime < this.spikeEndsAt) return 'spike';
+    if (this.weatherMult < 1.0) return 'monsoon';
+    return 'normal';
   }
 
   public getWeatherMult(): number {
     return this.weatherMult;
   }
 
-  public reset(): void {
-    this.activeScenario = 'normal';
-    this.weatherMult = 1.0;
-  }
-
-  public triggerScenario(
-    name: ScenarioName,
-    worldA: World,
-    worldB: World,
-    orderGen: OrderGenerator,
-    nowSimTime: number
-  ): EventPayload[] {
+  /** Applies the same disruption to every world (same riders, same orders). */
+  public triggerScenario(name: ScenarioName, worlds: World[], orderGen: OrderGenerator, nowSimTime: number): EventPayload[] {
     const events: EventPayload[] = [];
-    this.activeScenario = name;
+    const ev = (kind: string, message: string) => events.push({ simTime: nowSimTime, world: 'all', kind, message });
 
     switch (name) {
       case 'monsoon': {
         this.weatherMult = 1 / CONFIG.TRAFFIC_MULTIPLIER_MONSOON;
-        events.push({
-          simTime: nowSimTime,
-          world: 'both',
-          kind: 'SCENARIO_MONSOON',
-          message: '🌧️ Heavy Monsoon started! Travel times up 50%.',
-        });
+        ev('SCENARIO_MONSOON', '🌧️ Heavy Monsoon started! Travel times up 50%.');
         break;
       }
       case 'clear_weather': {
         this.weatherMult = 1.0;
-        this.activeScenario = 'normal';
-        events.push({
-          simTime: nowSimTime,
-          world: 'both',
-          kind: 'SCENARIO_CLEAR',
-          message: '☀️ Monsoon cleared. Travel speed returned to normal.',
-        });
+        ev('SCENARIO_CLEAR', '☀️ Monsoon cleared. Travel speed returned to normal.');
         break;
       }
       case 'spike': {
-        orderGen.triggerSpike(nowSimTime, 600); // 10 sim-minutes
-        events.push({
-          simTime: nowSimTime,
-          world: 'both',
-          kind: 'SCENARIO_IPL_SPIKE',
-          message: '🏏 IPL Final Spike triggered! Order rate 3x for 10 minutes in Bandra & Andheri.',
-        });
+        orderGen.triggerSpike(nowSimTime, SPIKE_DURATION_SEC);
+        this.spikeEndsAt = nowSimTime + SPIKE_DURATION_SEC;
+        ev('SCENARIO_IPL_SPIKE', '🏏 IPL Final Spike triggered! Order rate 3x for 10 minutes in Bandra & Andheri.');
         break;
       }
       case 'riders_offline': {
-        // Pick same 3 rider IDs in both worlds — rider-2 (Andheri), rider-8 (Bandra), rider-14 (Powai)
-        const targetRiderIds = new Set(['rider-2', 'rider-8', 'rider-14']);
+        // Pick riders that are online in every world, with the seeded RNG, so all worlds lose the same riders
+        const candidates = worlds[0].riders
+          .map(r => r.id)
+          .filter(id => worlds.every(w => w.riders.find(r => r.id === id)!.status !== 'offline'))
+          .sort();
+        const picked: string[] = [];
+        for (let i = 0; i < 3 && candidates.length > 0; i++) {
+          picked.push(candidates.splice(Math.floor(this.rng() * candidates.length), 1)[0]);
+        }
 
-        [worldA, worldB].forEach(world => {
-          world.riders.forEach(rider => {
-            if (targetRiderIds.has(rider.id)) {
-              rider.status = 'offline';
-
-              // Release ALL non-delivered orders on this rider back to placed pool
-              const affectedOrderIds = [...rider.assignedOrderIds];
-              for (const oId of affectedOrderIds) {
-                const ord = world.ordersMap.get(oId);
-                if (ord && ord.status !== 'delivered' && ord.status !== 'cancelled') {
-                  ord.status = 'placed';
-                  ord.riderId = undefined;
-                  ord.storeId = undefined;
-                  ord.decision = undefined;
-                  ord.holdUntil = undefined;
-                  ord.packStartedAt = undefined;
-
-                  // Remove from store pack queues
-                  world.stores.forEach(s => {
-                    s.packQueue = s.packQueue.filter(id => id !== oId);
-                  });
-                }
+        let released = 0;
+        let failed = 0;
+        for (const world of worlds) {
+          for (const id of picked) {
+            const rider = world.riders.find(r => r.id === id)!;
+            for (const oid of [...rider.assignedOrderIds]) {
+              const o = world.ordersMap.get(oid);
+              if (!o || isTerminal(o)) continue;
+              if (o.status === 'picked') {
+                world.endOrder(o, 'failed', nowSimTime, `rider ${id} went offline mid-delivery`); // goods are with the rider
+                failed++;
+              } else {
+                world.releaseOrder(o); // back to the pool for re-allocation (re-packed)
+                released++;
               }
-
-              rider.assignedOrderIds = [];
-              rider.route = [];
             }
-          });
-        });
+            rider.status = 'offline';
+            rider.assignedOrderIds = [];
+            rider.route = [];
+          }
+        }
 
-        events.push({
-          simTime: nowSimTime,
-          world: 'both',
-          kind: 'SCENARIO_RIDERS_OFFLINE',
-          message: '🛵 Disruption: 3 riders went offline mid-shift! Active orders released back to pool for re-optimization.',
-        });
+        ev('SCENARIO_RIDERS_OFFLINE', `🛵 ${picked.join(', ')} went offline mid-shift. Unpicked orders released for re-allocation (${released} across worlds); ${failed} picked order(s) failed.`);
         break;
       }
       case 'stockout': {
         const top5Skus = ['SKU-MILK-1L', 'SKU-BREAD-WHITE', 'SKU-EGGS-6P', 'SKU-BANANA-1KG', 'SKU-MAGGI-4P'];
-        [worldA, worldB].forEach(world => {
+        for (const world of worlds) {
           const targetStore = world.stores[0]; // Andheri West
-          top5Skus.forEach(sku => {
-            targetStore.inventory[sku] = 0;
-          });
-        });
-
-        events.push({
-          simTime: nowSimTime,
-          world: 'both',
-          kind: 'SCENARIO_STOCKOUT',
-          message: `📦 Major Stockout at ${worldA.stores[0].name}! Top 5 SKUs dropped to 0 stock.`,
-        });
+          top5Skus.forEach(sku => (targetStore.inventory[sku] = 0));
+        }
+        ev('SCENARIO_STOCKOUT', `📦 Major Stockout at ${worlds[0].stores[0].name}! Top 5 SKUs dropped to 0 stock.`);
         break;
       }
       case 'cancel_burst': {
-        // Find unpicked order IDs shared between both worlds
-        const sharedUnpicked = Array.from(worldA.ordersMap.values())
-          .filter(o => o.status === 'placed' || o.status === 'assigned' || o.status === 'packing' || o.status === 'packed')
-          .map(o => o.id);
-
-        const numToCancel = Math.max(1, Math.floor(sharedUnpicked.length * 0.1));
-        const cancelTargetIds = sharedUnpicked.slice(0, numToCancel);
-
-        [worldA, worldB].forEach(world => {
-          for (const cId of cancelTargetIds) {
-            const target = world.ordersMap.get(cId);
-            if (target && target.status !== 'delivered') {
-              target.status = 'cancelled';
-              // Remove from store pack queues and rider assigned orders
-              world.stores.forEach(s => {
-                s.packQueue = s.packQueue.filter(id => id !== target.id);
-              });
-              world.riders.forEach(r => {
-                r.assignedOrderIds = r.assignedOrderIds.filter(id => id !== target.id);
-                r.route = r.route.filter(st => st.orderId !== target.id);
-              });
-            }
-          }
-        });
-
-        events.push({
-          simTime: nowSimTime,
-          world: 'both',
-          kind: 'SCENARIO_CANCEL',
-          message: `❌ Cancellation Burst: 10% of active unpicked orders (${cancelTargetIds.length} orders) cancelled.`,
-        });
+        // Same order IDs in every world: orders not yet picked up (and not finished) everywhere
+        const unpicked = new Set(['placed', 'assigned', 'packing', 'packed']);
+        const candidates = [...worlds[0].ordersMap.keys()]
+          .filter(id => worlds.every(w => unpicked.has(w.ordersMap.get(id)?.status ?? '')))
+          .sort();
+        const count = Math.max(1, Math.floor(candidates.length * 0.1));
+        const picked: string[] = [];
+        for (let i = 0; i < count && candidates.length > 0; i++) {
+          picked.push(candidates.splice(Math.floor(this.rng() * candidates.length), 1)[0]);
+        }
+        for (const world of worlds) {
+          for (const id of picked) world.endOrder(world.ordersMap.get(id)!, 'cancelled', nowSimTime, 'customer cancelled');
+        }
+        ev('SCENARIO_CANCEL', `❌ Cancellation Burst: ${picked.length} unpicked order(s) cancelled in every world.`);
         break;
       }
     }

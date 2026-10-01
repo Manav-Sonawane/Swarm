@@ -1,47 +1,49 @@
 import { DarkStore, Order } from '../types';
-import { travelTimeSec } from '../sim/travel';
+import { CONFIG } from '../config';
+import { haversineKm, travelTimeSec } from './travel';
+import { forecastQueue, hasStock } from '../alloc/feasibility';
 
 export interface StoreCandidate {
   store: DarkStore;
-  score: number;
-  packWaitSec: number;
-  travelSec: number;
+  score: number; // packing delay + travel (sec)
+  packWaitSec: number; // until a newly queued order would be packed
+  travelSec: number; // store -> customer, expected
+  queueDepth: number;
 }
 
+/**
+ * Stores inside the geofence that stock every item, ranked.
+ * rank 'eta': packing delay + travel (Swarm, CONTEXT §5 step 1)
+ * rank 'travel': nearest only (Baseline)
+ */
 export function selectCandidateStores(
   order: Order,
   stores: DarkStore[],
+  orders: Map<string, Order>,
   nowSimTime: number,
-  weatherMult: number = 1.0
+  weatherMult: number = 1.0,
+  opts: { rank?: 'eta' | 'travel'; limit?: number; extraQueued?: Map<string, number> } = {}
 ): StoreCandidate[] {
+  const rank = opts.rank ?? 'eta';
+  const limit = opts.limit ?? CONFIG.CANDIDATE_STORES;
   const eligible: StoreCandidate[] = [];
 
   for (const store of stores) {
-    // Check if store has stock for every item in order
-    let hasAllStock = true;
-    for (const item of order.items) {
-      const availableQty = store.inventory[item.sku] ?? 0;
-      if (availableQty < item.qty) {
-        hasAllStock = false;
-        break;
-      }
-    }
+    if (haversineKm(store.loc, order.loc) > CONFIG.GEOFENCE_KM) continue;
+    if (!hasStock(store, order)) continue;
 
-    if (!hasAllStock) continue;
-
-    const packWaitSec = (store.packQueue.length / Math.max(1, store.packingSlots)) * store.packTimeSec;
-    const travelSec = travelTimeSec(store.loc, order.loc, nowSimTime, weatherMult, store.id);
-    const score = travelSec + packWaitSec;
-
+    const extra = opts.extraQueued?.get(store.id) ?? 0;
+    const packWaitSec = forecastQueue(store, orders, nowSimTime).nextFinishAt(extra) - nowSimTime;
+    const travelSec = travelTimeSec(store.loc, order.loc, nowSimTime, weatherMult);
     eligible.push({
       store,
-      score,
+      score: rank === 'eta' ? packWaitSec + travelSec : travelSec,
       packWaitSec,
       travelSec,
+      queueDepth: store.packQueue.length + extra,
     });
   }
 
-  // Sort by lowest score and keep top 2
-  eligible.sort((a, b) => a.score - b.score);
-  return eligible.slice(0, 2);
+  eligible.sort((a, b) => a.score - b.score || a.store.id.localeCompare(b.store.id));
+  return eligible.slice(0, limit);
 }

@@ -1,173 +1,127 @@
-import { Rider, Order, DarkStore, CandidateScore, Stop, LatLng } from '../types';
+import { Rider, Order, DarkStore, CandidateScore } from '../types';
 import { CONFIG } from '../config';
-import { travelTimeSec, routeDistanceKm } from '../sim/travel';
+import { travelTimeSec } from '../sim/travel';
+import { DropSpec, QueueForecast, TripPlan, permutations, planTrip } from './feasibility';
 
-export function getDropPermutations<T>(array: T[]): T[][] {
-  if (array.length <= 1) return [array];
-  const result: T[][] = [];
-  for (let i = 0; i < array.length; i++) {
-    const current = array[i];
-    const remaining = array.slice(0, i).concat(array.slice(i + 1));
-    const subPerms = getDropPermutations(remaining);
-    for (const perm of subPerms) {
-      result.push([current, ...perm]);
-    }
-  }
-  return result;
+/** A rider's trip as the allocator sees it during one call (includes orders assigned earlier in the same call). */
+export interface RiderPlanState {
+  rider: Rider;
+  orderIds: string[]; // undelivered orders on the trip
+  tripStoreId?: string; // store every order on the trip is picked up from
 }
 
-export function calculateSoloTripCost(
-  order: Order,
-  rider: Rider,
-  store: DarkStore,
-  nowSimTime: number,
-  weatherMult: number = 1.0
-): number {
-  const storeLegSec = travelTimeSec(rider.loc, store.loc, nowSimTime, weatherMult, store.id);
-  const packWaitSec = (store.packQueue.length / Math.max(1, store.packingSlots)) * store.packTimeSec;
-  const dropLegSec = travelTimeSec(store.loc, order.loc, nowSimTime, weatherMult, store.id);
-  return storeLegSec + packWaitSec + dropLegSec;
-}
-
+/**
+ * Inserts `order` into the rider's trip at `store`, trying every drop sequence (CONTEXT §5 steps 3–5).
+ * Feasible = every order on the trip meets its promise under the risk-padded ETA. Existing orders
+ * that were already projected late may not get later.
+ */
 export function evaluateInsertion(
   order: Order,
-  rider: Rider,
+  st: RiderPlanState,
   store: DarkStore,
-  existingOrdersMap: Map<string, Order>,
+  orders: Map<string, Order>,
+  forecast: QueueForecast,
+  newReadyAt: number,
   nowSimTime: number,
-  weatherMult: number = 1.0
+  weatherMult: number
 ): CandidateScore | null {
-  // Check capacity limit
-  if (rider.assignedOrderIds.length >= rider.capacity) {
-    return null;
+  const rider = st.rider;
+  if (rider.status === 'offline') return null;
+  if (st.orderIds.length >= rider.capacity) return null;
+  if (st.tripStoreId && st.tripStoreId !== store.id) return null; // one pickup store per trip
+
+  const existing: DropSpec[] = [];
+  let readyAt = newReadyAt;
+  for (const oid of st.orderIds) {
+    const o = orders.get(oid);
+    if (!o || o.status === 'delivered' || o.status === 'cancelled' || o.status === 'failed') continue;
+    existing.push({ orderId: o.id, loc: o.loc, promisedBy: o.promisedBy });
+    const r = o.status === 'packed' || o.status === 'picked' ? nowSimTime : forecast.finishAt.get(o.id) ?? newReadyAt;
+    readyAt = Math.max(readyAt, r);
   }
 
-  // Same-store batching constraint: rider must be idle, heading to store, or at store
-  // If rider already has assigned orders, they must all be from the same store
-  if (rider.assignedOrderIds.length > 0) {
-    if (rider.status === 'delivering' || rider.status === 'returning' || rider.status === 'offline') {
-      return null;
-    }
-    // Check home or assigned store match for all existing orders
-    for (const oid of rider.assignedOrderIds) {
-      const existingOrder = existingOrdersMap.get(oid);
-      if (existingOrder && existingOrder.storeId && existingOrder.storeId !== store.id) {
-        return null;
+  // Current trip without the new order (best sequence), for delay + insertion cost
+  let oldExp: TripPlan | null = null;
+  let oldPad: TripPlan | null = null;
+  if (existing.length > 0) {
+    for (const p of permutations(existing)) {
+      const e = planTrip(rider.loc, nowSimTime, store, readyAt, p, weatherMult);
+      if (!oldExp || e.rideSec < oldExp.rideSec) {
+        oldExp = e;
+        oldPad = planTrip(rider.loc, nowSimTime, store, readyAt, p, weatherMult, CONFIG.ETA_RISK_PAD);
       }
     }
-  } else {
-    // Rider is idle or returning.
-    if (rider.status === 'offline') return null;
   }
 
-  // Existing drop locations and orders
-  const existingDrops: { orderId: string; loc: LatLng; promisedBy: number }[] = [];
-  for (const oid of rider.assignedOrderIds) {
-    const o = existingOrdersMap.get(oid);
-    if (o && o.status !== 'delivered' && o.status !== 'cancelled') {
-      existingDrops.push({ orderId: o.id, loc: o.loc, promisedBy: o.promisedBy });
-    }
-  }
+  const newDrop: DropSpec = { orderId: order.id, loc: order.loc, promisedBy: order.promisedBy };
+  const load = existing.length;
+  let best: CandidateScore | null = null;
 
-  const newDrop = { orderId: order.id, loc: order.loc, promisedBy: order.promisedBy };
-  const allDropsToSequence = [...existingDrops, newDrop];
+  for (const perm of permutations([...existing, newDrop])) {
+    const exp = planTrip(rider.loc, nowSimTime, store, readyAt, perm, weatherMult);
+    const pad = planTrip(rider.loc, nowSimTime, store, readyAt, perm, weatherMult, CONFIG.ETA_RISK_PAD);
 
-  // Calculate current baseline travel time for rider before adding this order
-  let currentTripTimeSec = 0;
-  if (rider.route.length > 0) {
-    let prevLoc = rider.loc;
-    for (const s of rider.route) {
-      currentTripTimeSec += travelTimeSec(prevLoc, s.loc, nowSimTime, weatherMult);
-      prevLoc = s.loc;
-    }
-  }
-
-  // Calculate time to arrive at store & finish packing
-  const travelToStoreSec = travelTimeSec(rider.loc, store.loc, nowSimTime, weatherMult, store.id);
-  const pickupEta = nowSimTime + travelToStoreSec;
-  const storePackWaitSec = (store.packQueue.length / Math.max(1, store.packingSlots)) * store.packTimeSec;
-  const storeDepartureSimTime = pickupEta + storePackWaitSec;
-
-  // Brute-force drop permutations (up to 4 drops, max 24 permutations)
-  const dropPerms = getDropPermutations(allDropsToSequence);
-
-  let bestPermScore: CandidateScore | null = null;
-  let minCost = Infinity;
-
-  for (const perm of dropPerms) {
-    let currTime = storeDepartureSimTime;
-    let currLoc = store.loc;
-    let totalDropTravelSec = 0;
-    let totalLatenessSec = 0;
-    let allFeasible = true;
-
-    const stops: Stop[] = [];
-    // Store pickup stop
-    stops.push({
-      type: 'pickup',
-      storeId: store.id,
-      loc: store.loc,
-      eta: pickupEta,
-    });
-
-    let targetOrderEta = 0;
-
-    for (const drop of perm) {
-      const legSec = travelTimeSec(currLoc, drop.loc, currTime, weatherMult, store.id);
-      currTime += legSec;
-      totalDropTravelSec += legSec;
-      currLoc = drop.loc;
-
-      stops.push({
-        type: 'drop',
-        orderId: drop.orderId,
-        loc: drop.loc,
-        eta: currTime,
-      });
-
-      if (drop.orderId === order.id) {
-        targetOrderEta = currTime;
+    let feasible = true;
+    let breaksOthers = false;
+    let maxLateness = 0;
+    let minSlack = Infinity;
+    let delayToOthers = 0;
+    for (const d of perm) {
+      const padEta = pad.dropEtas.get(d.orderId)!;
+      const allowed = d.orderId === order.id ? d.promisedBy : Math.max(d.promisedBy, oldPad?.dropEtas.get(d.orderId) ?? d.promisedBy);
+      if (padEta > allowed) {
+        feasible = false;
+        if (d.orderId !== order.id) breaksOthers = true;
       }
-
-      const lateness = Math.max(0, currTime - drop.promisedBy);
-      if (currTime > drop.promisedBy) {
-        allFeasible = false;
+      maxLateness = Math.max(maxLateness, padEta - d.promisedBy);
+      minSlack = Math.min(minSlack, d.promisedBy - padEta);
+      if (d.orderId !== order.id && oldExp) {
+        delayToOthers += Math.max(0, exp.dropEtas.get(d.orderId)! - oldExp.dropEtas.get(d.orderId)!);
       }
-      totalLatenessSec += lateness;
     }
+    // Never rescue one order by making orders already on the trip late (lateness would cascade under load)
+    if (breaksOthers) continue;
 
-    const totalTripSec = travelToStoreSec + storePackWaitSec + totalDropTravelSec;
-    const insertionSec = Math.max(0, totalTripSec - currentTripTimeSec);
-    const loadPenalty = CONFIG.W_LOAD * rider.assignedOrderIds.length;
-    const latenessPenalty = CONFIG.W_LATE * totalLatenessSec;
+    const eta = exp.dropEtas.get(order.id)!;
+    const loadPenalty = CONFIG.W_LOAD * load;
+    // Insertion cost: the new customer's wait + extra wait imposed on customers already on the trip
+    const totalCost = (eta - nowSimTime) + delayToOthers + loadPenalty;
+    const insertionSec = exp.rideSec - (oldExp?.rideSec ?? 0);
+    const soloRideSec =
+      travelTimeSec(rider.loc, store.loc, nowSimTime, weatherMult) + travelTimeSec(store.loc, order.loc, nowSimTime, weatherMult);
 
-    const soloCost = calculateSoloTripCost(order, rider, store, nowSimTime, weatherMult);
-    const batchSavingSec = Math.max(0, soloCost - insertionSec);
-
-    const totalCost = insertionSec + latenessPenalty + loadPenalty + storePackWaitSec;
-
-    const candidateScore: CandidateScore = {
+    const cand: CandidateScore = {
       riderId: rider.id,
       storeId: store.id,
       totalCost,
       breakdown: {
-        travelSec: travelToStoreSec + totalDropTravelSec,
+        travelSec: exp.rideSec,
         insertionSec,
-        latenessPenalty,
+        latenessPenalty: Math.max(0, maxLateness),
         loadPenalty,
-        packWaitSec: storePackWaitSec,
-        batchSavingSec,
+        packWaitSec: Math.max(0, exp.departAt - exp.pickupEta),
+        batchSavingSec: load > 0 ? Math.max(0, soloRideSec - insertionSec) : 0,
       },
-      eta: targetOrderEta,
-      feasible: allFeasible,
-      tripStops: stops,
+      eta,
+      feasible,
+      maxLatenessSec: Math.max(0, maxLateness),
+      minSlackSec: minSlack,
+      tripStops: exp.stops,
     };
 
-    if (totalCost < minCost) {
-      minCost = totalCost;
-      bestPermScore = candidateScore;
-    }
+    if (!best || better(cand, best)) best = cand;
   }
 
-  return bestPermScore;
+  return best;
+}
+
+/** Feasible beats infeasible; among feasible lower cost (tie: more slack); among infeasible lower worst lateness. */
+export function better(a: CandidateScore, b: CandidateScore): boolean {
+  if (a.feasible !== b.feasible) return a.feasible;
+  if (a.feasible) {
+    if (Math.abs(a.totalCost - b.totalCost) > 1e-6) return a.totalCost < b.totalCost;
+    return a.minSlackSec > b.minSlackSec;
+  }
+  if (Math.abs(a.maxLatenessSec - b.maxLatenessSec) > 1e-6) return a.maxLatenessSec < b.maxLatenessSec;
+  return a.totalCost < b.totalCost;
 }
