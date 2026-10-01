@@ -37,7 +37,7 @@ function buildPayload(): TickPayload {
     worlds: {
       baseline: worlds.baseline.getSnapshot(now),
       swarm: worlds.swarm.getSnapshot(now),
-      naive: worlds.naive.getSnapshot(now, false), // headless: metrics only
+      naive: worlds.naive.getSnapshot(now, true), // full 3rd deliverable approach: riders, orders, stores, metrics
     },
   };
 }
