@@ -66,13 +66,13 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
           </div>
         </div>
       ),
-      speakerNotes: 'Point out: Quick-commerce is not a shortest-path problem. A store 500m away with a 6-min packing queue loses to a store 1.5km away that packs instantly.',
+      speakerNotes: 'Point out: Quick-commerce is not a shortest-path problem. Riders are the scarce resource: the nearest rider is not always the right one, because it may already be on a trip that a new order would make late.',
     },
     {
       number: 2,
       badge: '02 / THE COUPLED DECISION',
       badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-      title: 'Store + Rider + Route Permutation in One Step',
+      title: 'Rider + Route Permutation in One Step',
       subtitle: 'Why independent sequential greedy heuristics fail and how Swarm couples the entire allocation.',
       content: (
         <div className="space-y-4 mt-2">
@@ -80,10 +80,10 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
             <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4">
               <div className="font-mono font-bold text-amber-400 mb-1 flex items-center space-x-1.5">
                 <Layers className="w-4 h-4" />
-                <span>1. Multi-Store Geofence</span>
+                <span>1. Serving Store</span>
               </div>
               <p className="text-slate-300 text-[11px] leading-relaxed">
-                Filter stores within 3 km with complete SKU inventory. Score dark stores by pack queue wait + road distance.
+                The customer's nearest dark store (3 km radius) serves them, and the cart only offers items it has in stock. No store hopping; the store's pack queue is part of every ETA.
               </p>
             </div>
 
@@ -93,7 +93,7 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
                 <span>2. Candidate Riders</span>
               </div>
               <p className="text-slate-300 text-[11px] leading-relaxed">
-                Select riders with capacity (&le;3 orders) and compatible dark store dispatch locations.
+                Select that store's riders with capacity (&le;3 orders) who haven't left the store yet.
               </p>
             </div>
 
@@ -169,7 +169,7 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
             <div>
               <span className="font-mono font-bold text-sky-400 block mb-1">Decision Drawer</span>
               <p className="text-slate-300 text-[11px] leading-relaxed">
-                Click any live order to inspect all candidate stores, candidate riders, rejected infeasible options, and allocation latency in ms.
+                Click any live order to inspect its serving store, candidate riders, rejected infeasible options, and allocation latency in ms.
               </p>
             </div>
             <span className="text-[10px] text-slate-500 font-mono mt-2">100% Audit Transparency</span>
@@ -196,7 +196,7 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
           </div>
         </div>
       ),
-      speakerNotes: 'Show the Decision Drawer during demo: Judges love seeing WHY a specific rider and store was chosen and why other candidates were discarded.',
+      speakerNotes: 'Show the Decision Drawer during demo: Judges love seeing WHY a specific rider was chosen and why other candidates were discarded.',
     },
     {
       number: 5,
@@ -209,33 +209,33 @@ export const PitchDeckModal: React.FC<PitchDeckModalProps> = ({ isOpen, onClose 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
             <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-xl p-3">
               <span className="text-[10px] font-mono uppercase text-emerald-400 block">On-Time Rate</span>
-              <strong className="text-2xl font-black text-emerald-400 font-mono">+12% to +20%</strong>
-              <span className="text-[10px] text-slate-400 block mt-0.5">84.1% vs 75.2%</span>
+              <strong className="text-2xl font-black text-emerald-400 font-mono">+8 pts</strong>
+              <span className="text-[10px] text-slate-400 block mt-0.5">89.5% vs 81.2% (seed 42, steady)</span>
             </div>
 
             <div className="bg-teal-950/60 border border-teal-500/40 rounded-xl p-3">
               <span className="text-[10px] font-mono uppercase text-teal-400 block">P90 Lateness</span>
               <strong className="text-2xl font-black text-teal-400 font-mono">5x Lower</strong>
-              <span className="text-[10px] text-slate-400 block mt-0.5">61s vs 335s</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">34s vs 181s (seed 42, steady)</span>
             </div>
 
             <div className="bg-sky-950/60 border border-sky-500/40 rounded-xl p-3">
               <span className="text-[10px] font-mono uppercase text-sky-400 block">Decision Latency</span>
-              <strong className="text-2xl font-black text-sky-400 font-mono">&lt; 15 ms</strong>
+              <strong className="text-2xl font-black text-sky-400 font-mono">&lt; 10 ms</strong>
               <span className="text-[10px] text-slate-400 block mt-0.5">Budget: 200 ms</span>
             </div>
 
             <div className="bg-amber-950/60 border border-amber-500/40 rounded-xl p-3">
               <span className="text-[10px] font-mono uppercase text-amber-400 block">Trip Batching</span>
-              <strong className="text-2xl font-black text-amber-400 font-mono">1.8x - 2.5x</strong>
-              <span className="text-[10px] text-slate-400 block mt-0.5">Orders per trip</span>
+              <strong className="text-2xl font-black text-amber-400 font-mono">1.2x - 1.4x</strong>
+              <span className="text-[10px] text-slate-400 block mt-0.5">Orders per trip (Baseline: 1.0)</span>
             </div>
           </div>
 
           <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs flex items-center justify-between">
             <div className="flex items-center space-x-2 text-slate-300">
               <CheckCircle className="w-4 h-4 text-emerald-400" />
-              <span><strong>Failed Deliveries:</strong> Swarm has <strong>0 failed deliveries</strong> vs 42 failed on Naive under inventory depletion.</span>
+              <span><strong>Out of stock:</strong> carts only contain in-stock items, so <strong>stock never causes a failed delivery</strong> or a trip to another store. 77.0% vs 70.8% on time across 40 held-out seeds.</span>
             </div>
             <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-1 rounded">
               Zero Stockout Failures

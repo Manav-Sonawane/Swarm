@@ -1,5 +1,5 @@
 export type RiderStatus = 'idle' | 'to_store' | 'at_store' | 'delivering' | 'returning' | 'offline';
-export type OrderStatus = 'placed' | 'assigned' | 'packing' | 'packed' | 'picked' | 'delivered' | 'cancelled';
+export type OrderStatus = 'placed' | 'assigned' | 'packing' | 'packed' | 'picked' | 'delivered' | 'cancelled' | 'failed' | 'rejected';
 
 export interface RiderSnapshot {
   id: string;
@@ -27,6 +27,14 @@ export interface OrderSnapshot {
   createdAt: number;
   deliveredAt?: number;
   zoneId?: string;
+  servingStoreId?: string;
+  assignedAt?: number; // real event times from the simulation
+  packedAt?: number;
+  pickedAt?: number;
+  tripSize?: number; // orders on the rider's trip when it left the store (1 = solo)
+  riderHomeStoreId?: string; // the store the assigned rider belongs to
+  failReason?: string;
+  items?: { sku: string; qty: number }[]; // the real basket
 }
 
 export interface StoreSnapshot {
@@ -35,6 +43,7 @@ export interface StoreSnapshot {
   lat: number;
   lng: number;
   queue: number;
+  offline?: boolean; // store_offline scenario
   packingQueue?: { orderId: string; status: 'waiting' | 'packing' | 'ready' }[];
   inventory?: Record<string, number>;
 }
@@ -85,6 +94,7 @@ export interface TickPayload {
     swarm: WorldSnapshot;
     naive?: WorldSnapshot;
   };
+  forecast?: { ordersPerHourLast5Min: number; surge: boolean }; // demand forecaster
 }
 
 export interface EventPayload {
@@ -110,6 +120,7 @@ export interface CandidateScore {
   feasible: boolean;
   maxLatenessSec?: number;
   minSlackSec?: number;
+  riderSec?: number; // rider-busy seconds this assignment consumes
 }
 
 export interface DecisionRecord {

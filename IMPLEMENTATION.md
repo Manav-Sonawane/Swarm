@@ -83,67 +83,80 @@ Swarm/
 ### From Server → Client (every real tick, ~1/sec)
 
 ```typescript
-socket.on('tick', (payload: TickPayload) => {
-  {
-    simTime: number;              // sim seconds
-    speed: number;                // 1x, 2x, 10x, etc.
-    running: boolean;
-    seed: number;
-    
-    activeScenario: string;
+// Exactly what server/src/types.ts sends and client/src/types.ts expects (checked by tsc: the server types
+// must be assignable to the client types).
+socket.on('tick', (payload: TickPayload) => { /* ~1/sec */ })
 
-    worlds: {
-      baseline: WorldSnapshot;
-      swarm: WorldSnapshot;
-      naive: WorldSnapshot;     // metrics only: stores/riders/orders sent as []
-    }
-  }
-})
+interface TickPayload {
+  simTime: number;              // sim seconds
+  speed: number;                // 1x … 30x
+  running: boolean;
+  seed: number;
+  activeScenario: string;       // 'normal' | 'monsoon' | 'spike' | 'store_offline'
+  weatherMult: number;          // 1 clear, 0.67 monsoon (speed factor)
+  worlds: {
+    baseline: WorldSnapshot;
+    swarm: WorldSnapshot;
+    naive: WorldSnapshot;       // full snapshot too
+  };
+  forecast: { ordersPerHourLast5Min: number; surge: boolean }; // demand forecaster
+}
 
 interface WorldSnapshot {
-  stores: StoreSnapshot[];
-  riders: RiderSnapshot[];
-  orders: OrderSnapshot[];
+  stores: StoreSnapshot[];      // 15
+  riders: RiderSnapshot[];      // 90
+  orders: OrderSnapshot[];      // active orders + the last 30 delivered
   metrics: Metrics;
 }
 
 interface StoreSnapshot {
   id: string; name: string;
   lat: number; lng: number;
-  packingQueue: { orderId: string; status: 'waiting'|'packing'|'ready' }[];
-  inventory: Record<string, number>; // sku → qty
+  queue: number;                // orders waiting or being packed
+  offline: boolean;             // store_offline scenario
 }
 
 interface RiderSnapshot {
-  id: string; storeId: string;
+  id: string;
   lat: number; lng: number;
-  status: RiderStatus;
-  load: number; // 0–1, fraction of capacity
-  route: Stop[]; // remaining stops in order
-  deliveries: number; // count this shift
+  status: 'idle'|'to_store'|'at_store'|'delivering'|'returning'|'offline';
+  load: number;                 // orders on the rider's trip (capacity 3)
+  routeLine: [number, number][]; // current position, then the remaining stops
+  homeStoreId: string;          // the one dark store this rider belongs to
+  deliveries: number;           // completed this run
 }
 
-interface Stop {
+interface Stop {                // inside DecisionRecord.chosen.tripStops
   type: 'pickup' | 'drop';
   orderId?: string;
   storeId?: string;
-  lat: number; lng: number;
-  eta: number; // sim seconds until this stop
+  loc: { lat: number; lng: number };
+  eta: number;                  // projected sim time of arrival
 }
 
 interface OrderSnapshot {
   id: string;
   lat: number; lng: number;
-  status: OrderStatus; // 'placed'|'assigned'|'packing'|'packed'|'picked'|'delivered'|'late'|'rejected'
+  status: 'placed'|'assigned'|'packing'|'packed'|'picked'|'delivered'|'cancelled'|'failed'|'rejected';
   priority: 'express' | 'regular';
-  class: 'express' | 'regular' | 'infeasible'; // feasibility
-  assignedStoreId?: string;
-  assignedRiderId?: string;
+  class: 'express' | 'regular' | 'infeasible';
+  servingStoreId?: string;      // nearest online dark store, fixed at checkout
+  storeId?: string;             // store it is being packed at (= servingStoreId)
+  riderId?: string;
+  riderHomeStoreId?: string;    // differs from the serving store only for Naive
   createdAt: number;
-  promisedBy: number;
+  assignedAt?: number;          // real event times
+  packedAt?: number;
+  pickedAt?: number;
   deliveredAt?: number;
+  tripSize?: number;            // orders on the rider's trip at pickup (1 = solo)
+  promisedBy: number;
+  projectedEta?: number;
   isLate: boolean;
-  decision?: DecisionRecord; // for explainability
+  items?: { sku: string; qty: number }[];  // the real basket
+  failReason?: string;
+  zoneId?: string;
+  // The explanation (DecisionRecord) is NOT embedded: GET /api/decision/:world/:orderId
 }
 
 interface DecisionRecord {

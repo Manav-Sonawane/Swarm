@@ -103,6 +103,10 @@ export interface Order {
   isLate?: boolean;
   projectedEta?: number; // refreshed every tick
   packStartedAt?: number;
+  assignedAt?: number; // when the current rider was assigned (sim time)
+  packedAt?: number; // when packing finished
+  pickedAt?: number; // when the rider left the store with the order
+  tripSize?: number; // orders on the rider's trip when it left the store (1 = solo)
   decision?: DecisionRecord;
   holdUntil?: number; // for delayed commitment
   zoneId?: string; // = serving store (order density per zone)
@@ -153,6 +157,7 @@ export interface RiderSnapshot {
   load: number;
   routeLine: [number, number][];
   homeStoreId: string;
+  deliveries: number; // deliveries completed this run
 }
 
 export interface OrderSnapshot {
@@ -170,6 +175,14 @@ export interface OrderSnapshot {
   createdAt: number;
   deliveredAt?: number;
   zoneId?: string;
+  servingStoreId?: string;
+  assignedAt?: number;
+  packedAt?: number;
+  pickedAt?: number;
+  tripSize?: number;
+  riderHomeStoreId?: string; // the store the assigned rider belongs to (differs from the serving store for Naive)
+  items?: { sku: string; qty: number }[]; // the real basket (reserved at checkout)
+  failReason?: string;
 }
 
 export interface StoreSnapshot {
@@ -198,7 +211,7 @@ export interface TickPayload {
   worlds: {
     baseline: WorldSnapshot;
     swarm: WorldSnapshot;
-    naive: WorldSnapshot; // metrics only: stores/riders/orders are []
+    naive: WorldSnapshot; // full snapshot too: the UI shows Naive in its 3-way views
   };
   forecast: { ordersPerHourLast5Min: number; surge: boolean }; // demand forecaster (Swarm surge mode)
 }

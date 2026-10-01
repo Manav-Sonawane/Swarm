@@ -28,7 +28,11 @@ const SCENARIO_KINDS: Record<string, KindConfig> = {
   SCENARIO_MONSOON:         { label: 'Monsoon',       className: 'text-blue-300    border-blue-500/40   bg-blue-950/60',   icon: <CloudRain className="w-3 h-3" /> },
   SCENARIO_SPIKE:           { label: 'IPL Spike',     className: 'text-amber-300   border-amber-500/40  bg-amber-950/60',  icon: <Zap className="w-3 h-3" /> },
   SCENARIO_RIDERS_OFFLINE:  { label: 'Riders Offline',className: 'text-rose-300    border-rose-500/40   bg-rose-950/60',   icon: <AlertOctagon className="w-3 h-3" /> },
-  SCENARIO_CANCEL_BURST:    { label: 'Cancel Burst',  className: 'text-orange-300  border-orange-500/40 bg-orange-950/60', icon: <XCircle className="w-3 h-3" /> },
+  SCENARIO_CANCEL:          { label: 'Cancel Burst',  className: 'text-orange-300  border-orange-500/40 bg-orange-950/60', icon: <XCircle className="w-3 h-3" /> },
+  SCENARIO_STORE_OFFLINE:   { label: 'Store Offline', className: 'text-rose-300    border-rose-500/40   bg-rose-950/60',   icon: <AlertOctagon className="w-3 h-3" /> },
+  SCENARIO_CLEAR:           { label: 'All Clear',     className: 'text-emerald-300 border-emerald-500/40 bg-emerald-950/60', icon: <RefreshCcw className="w-3 h-3" /> },
+  FORECAST_SURGE:           { label: 'Surge Forecast', className: 'text-orange-300 border-orange-500/40 bg-orange-950/60', icon: <Zap className="w-3 h-3" /> },
+  FORECAST_NORMAL:          { label: 'Demand Normal', className: 'text-slate-300   border-slate-600     bg-slate-800',     icon: <Zap className="w-3 h-3" /> },
   SCENARIO_STOCKOUT:        { label: 'Stock-Out',     className: 'text-red-300     border-red-500/40    bg-red-950/60',    icon: <XCircle className="w-3 h-3" /> },
 };
 

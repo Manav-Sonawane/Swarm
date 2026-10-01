@@ -8,6 +8,8 @@ interface HeaderProps {
   seed: number;
   activeScenario: string;
   weatherMult: number;
+  forecast?: { ordersPerHourLast5Min: number; surge: boolean };
+  offlineStores?: string[];
   onOpenScoreboard: () => void;
   onOpenPitchDeck: () => void;
 }
@@ -18,6 +20,8 @@ export const Header: React.FC<HeaderProps> = ({
   seed,
   activeScenario,
   weatherMult,
+  forecast,
+  offlineStores = [],
   onOpenScoreboard,
   onOpenPitchDeck,
 }) => {
@@ -78,6 +82,19 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-xs font-medium px-3 py-1 rounded-xl bg-amber-950/60 border border-amber-400/30 text-amber-200 flex items-center space-x-1.5 shadow-[0_0_15px_rgba(251,191,36,0.2)] animate-pulse">
               <Zap className="w-3.5 h-3.5 text-amber-300" />
               <span>IPL Spike (3x Rate)</span>
+            </span>
+          )}
+
+          {forecast?.surge && (
+            <span className="text-xs font-medium px-3 py-1 rounded-xl bg-orange-950/60 border border-orange-400/30 text-orange-200 flex items-center space-x-1.5">
+              <Zap className="w-3.5 h-3.5 text-orange-300" />
+              <span>Surge forecast: {forecast.ordersPerHourLast5Min} orders/h</span>
+            </span>
+          )}
+
+          {offlineStores.length > 0 && (
+            <span className="text-xs font-medium px-3 py-1 rounded-xl bg-rose-950/60 border border-rose-400/30 text-rose-200 flex items-center space-x-1.5">
+              <span>⛔ {offlineStores.join(', ')} offline</span>
             </span>
           )}
         </div>

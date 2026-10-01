@@ -101,6 +101,8 @@ const App: React.FC = () => {
         seed={tickData.seed}
         activeScenario={tickData.activeScenario}
         weatherMult={tickData.weatherMult}
+        forecast={tickData.forecast}
+        offlineStores={tickData.worlds.swarm.stores.filter(s => s.offline).map(s => s.name)}
         onOpenScoreboard={() => setScoreboardOpen(true)}
         onOpenPitchDeck={() => setPitchDeckOpen(true)}
       />
@@ -217,7 +219,7 @@ const App: React.FC = () => {
             {(mapLayout === '3way' || mapLayout === 'dual_naive' || (mapLayout === 'single' && singleFocusWorld === 'naive')) && (
               <MapView
                 title="Approach 1: Naive"
-                badge="Single-Store Nearest Rider"
+                badge="Nearest Rider, Any Store"
                 badgeColor="bg-slate-900/90 text-slate-300 border-slate-700"
                 worldData={naiveWorld}
                 onSelectOrder={(id: string) => handleSelectOrder(id, 'naive')}
@@ -229,7 +231,7 @@ const App: React.FC = () => {
             {(mapLayout === '3way' || mapLayout === 'dual_baseline' || (mapLayout === 'single' && singleFocusWorld === 'baseline')) && (
               <MapView
                 title="Approach 2: Baseline"
-                badge="Nearest Stocked Dark Store (FIFO Solo)"
+                badge="Serving Store + Nearest Rider (FIFO Solo)"
                 badgeColor="bg-rose-950/80 text-rose-400 border-rose-600/40"
                 worldData={tickData.worlds.baseline}
                 onSelectOrder={(id: string) => handleSelectOrder(id, 'baseline')}
@@ -241,7 +243,7 @@ const App: React.FC = () => {
             {(mapLayout === '3way' || mapLayout === 'dual_baseline' || mapLayout === 'dual_naive' || (mapLayout === 'single' && singleFocusWorld === 'swarm')) && (
               <MapView
                 title="Approach 3: Swarm Engine ★"
-                badge="Coupled Store + Rider + Batch Route"
+                badge="Cost-aware Rider + Batched Routes"
                 badgeColor="bg-emerald-950/80 text-emerald-400 border-emerald-500/40"
                 worldData={tickData.worlds.swarm}
                 onSelectOrder={(id: string) => handleSelectOrder(id, 'swarm')}

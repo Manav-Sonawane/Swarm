@@ -84,7 +84,7 @@ export const FinalScoreboardModal: React.FC<FinalScoreboardModalProps> = ({
                 3-WAY ALLOCATION ENGINE SCORECARD
               </h2>
               <p className="text-[11px] text-slate-400">
-                Naive Single-Store vs Baseline Greedy vs Swarm Coupled Rolling-Horizon
+                Naive Any-store Rider vs Baseline Greedy vs Swarm Rolling-Horizon
               </p>
             </div>
           </div>

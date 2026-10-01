@@ -169,7 +169,7 @@ export const OrderDrawer: React.FC<OrderDrawerProps> = ({ order, world, onClose 
             {decision.storeOptions && decision.storeOptions.length > 0 && (
               <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 space-y-2">
                 <h4 className="font-mono text-xs font-bold text-slate-300 flex items-center space-x-1.5">
-                  <Store className="w-3.5 h-3.5 text-sky-400" /><span>Store Options ({decision.storeOptions.length})</span>
+                  <Store className="w-3.5 h-3.5 text-sky-400" /><span>{decision.storeOptions.length === 1 ? 'Serving Store (fixed by address)' : `Store Options (${decision.storeOptions.length})`}</span>
                 </h4>
                 <div className="grid grid-cols-[1fr_60px_48px_52px] text-[9px] uppercase font-mono text-slate-500 pb-1 border-b border-slate-800">
                   <span>Store</span><span className="text-center">ETA</span><span className="text-center">Queue</span><span className="text-center">OK?</span>

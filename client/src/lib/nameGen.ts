@@ -48,7 +48,37 @@ export function getCustomerName(orderId: string, seed: number = 42): string {
   return `${first} ${last}`;
 }
 
-export function getOrderItems(orderId: string): { sku: string; name: string; qty: number; price: number }[] {
+// Display names and prices for the SKUs the server puts in carts (server/src/seed/stores.ts)
+const SKU_CATALOG: Record<string, { name: string; price: number }> = {
+  'SKU-MILK-1L': { name: 'Amul Taaza Homogenised Toned Milk 1L', price: 72 },
+  'SKU-BREAD-WHITE': { name: 'Britannia White Bread 400g', price: 45 },
+  'SKU-EGGS-6P': { name: 'Farm Fresh Eggs (Pack of 6)', price: 54 },
+  'SKU-BANANA-1KG': { name: 'Robusta Bananas 1kg', price: 59 },
+  'SKU-MAGGI-4P': { name: 'Maggi 2-Min Masala Noodles (Pack of 4)', price: 56 },
+  'SKU-CHIPS-50G': { name: "Lay's India's Magic Masala Chips 50g", price: 20 },
+  'SKU-COKE-750ML': { name: 'Coca-Cola 750ml', price: 40 },
+  'SKU-WATER-2L': { name: 'Bisleri Mineral Water 2L', price: 30 },
+  'SKU-CURD-500G': { name: 'Amul Masti Dahi 500g', price: 40 },
+  'SKU-BUTTER-100G': { name: 'Amul Butter 100g', price: 62 },
+  'SKU-ICE-CREAM-500ML': { name: 'Vadilal Vanilla Ice Cream 500ml', price: 190 },
+  'SKU-CHOCOLATE-BAR': { name: 'Cadbury Dairy Milk Silk 60g', price: 80 },
+  'SKU-APPLE-1KG': { name: 'Shimla Apples 1kg', price: 180 },
+  'SKU-TOMATO-1KG': { name: 'Tomato 1kg', price: 40 },
+  'SKU-ONION-1KG': { name: 'Onion 1kg', price: 45 },
+  'SKU-POTATO-1KG': { name: 'Potato 1kg', price: 40 },
+};
+
+/** The order's real basket when the server sent it; otherwise a deterministic stand-in from the order id. */
+export function getOrderItems(
+  orderId: string,
+  real?: { sku: string; qty: number }[]
+): { sku: string; name: string; qty: number; price: number }[] {
+  if (real && real.length > 0) {
+    return real.map(it => {
+      const c = SKU_CATALOG[it.sku] ?? { name: it.sku.replace('SKU-', '').replace(/-/g, ' '), price: 50 };
+      return { sku: it.sku, name: c.name, qty: it.qty, price: c.price * it.qty };
+    });
+  }
   const hash = hashStr(orderId);
   const itemCount = (hash % 3) + 1; // 1 to 3 items
   const items: { sku: string; name: string; qty: number; price: number }[] = [];

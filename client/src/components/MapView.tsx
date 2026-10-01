@@ -23,13 +23,13 @@ export const MapView: React.FC<MapViewProps> = ({
   selectedOrderId,
 }) => {
   // Custom Leaflet DivIcons
-  const createStoreIcon = (queue: number, name: string) => {
+  const createStoreIcon = (queue: number, name: string, offline: boolean = false) => {
     return L.divIcon({
       className: 'custom-store-icon',
       html: `
         <div class="relative flex items-center justify-center">
-          <div class="w-8 h-8 rounded-lg bg-indigo-600 border-2 border-indigo-300 flex items-center justify-center shadow-lg text-white font-bold text-xs">
-            🏬
+          <div class="w-8 h-8 rounded-lg ${offline ? 'bg-slate-700 border-rose-400 opacity-60' : 'bg-indigo-600 border-indigo-300'} border-2 flex items-center justify-center shadow-lg text-white font-bold text-xs">
+            ${offline ? '⛔' : '🏬'}
           </div>
           ${
             queue > 0
@@ -107,12 +107,13 @@ export const MapView: React.FC<MapViewProps> = ({
             <Marker
               key={store.id}
               position={[store.lat, store.lng]}
-              icon={createStoreIcon(store.queue, store.name)}
+              icon={createStoreIcon(store.queue, store.name, !!store.offline)}
             >
               <Popup>
                 <div className="text-xs font-sans text-slate-900">
                   <strong className="block text-sm">{store.name}</strong>
                   <div>Packing Queue: {store.queue} orders</div>
+                  {store.offline && <div className="text-rose-600 font-bold">OFFLINE: its orders are re-served from the next-nearest store</div>}
                 </div>
               </Popup>
             </Marker>
@@ -130,6 +131,8 @@ export const MapView: React.FC<MapViewProps> = ({
                     <strong className="block text-sm">Rider {rider.id}</strong>
                     <div>Status: <span className="uppercase font-semibold">{rider.status}</span></div>
                     <div>Active Load: {rider.load} / 3 orders</div>
+                    <div>Dark store: {worldData.stores.find(s => s.id === rider.homeStoreId)?.name ?? rider.homeStoreId}</div>
+                    {rider.deliveries !== undefined && <div>Deliveries this run: {rider.deliveries}</div>}
                   </div>
                 </Popup>
               </Marker>
@@ -171,8 +174,9 @@ export const MapView: React.FC<MapViewProps> = ({
               >
                 <Popup>
                   <div className="text-xs font-sans text-slate-900">
-                    <strong className="block">{order.id} ({order.priority})</strong>
+                    <strong className="block">{order.id} ({order.class ?? order.priority})</strong>
                     <div>Status: {order.status}</div>
+                    <div>Promised: {Math.round((order.promisedBy - order.createdAt) / 60)} min</div>
                     <div>Lateness: {order.isLate ? '⚠️ AT RISK / LATE' : '✅ ON TIME'}</div>
                     <button
                       onClick={() => onSelectOrder(order.id)}

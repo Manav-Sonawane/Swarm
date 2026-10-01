@@ -96,6 +96,7 @@ export class World {
       order.storeId = store.id;
       order.riderId = rider.id;
       order.holdUntil = undefined;
+      order.assignedAt = assign.decision.decidedAt;
       order.decision = { ...assign.decision, decisionMs };
 
       if (!store.packQueue.includes(order.id)) store.packQueue.push(order.id);
@@ -121,6 +122,10 @@ export class World {
     order.storeId = undefined;
     order.decision = undefined;
     order.packStartedAt = undefined;
+    order.assignedAt = undefined;
+    order.packedAt = undefined;
+    order.pickedAt = undefined;
+    order.tripSize = undefined;
     order.holdUntil = undefined;
   }
 
@@ -151,6 +156,7 @@ export class World {
 
     const fromId = order.riderId;
     order.riderId = toRider.id;
+    order.assignedAt = now;
     order.decision = { ...a.decision, decisionMs };
     if (!toRider.assignedOrderIds.includes(order.id)) toRider.assignedOrderIds.push(order.id);
     toRider.route = a.newRoute.map(s => ({ ...s, loc: { ...s.loc } }));
@@ -240,6 +246,7 @@ export class World {
         if (!o || (o.status !== 'assigned' && o.status !== 'packing')) return false;
         if (o.status === 'packing' && nowSimTime >= o.packStartedAt! + store.packTimeSec) {
           o.status = 'packed';
+          o.packedAt = nowSimTime;
           return false;
         }
         return true;
@@ -296,7 +303,11 @@ export class World {
             rider.readyAtStoreSince = undefined;
             for (const id of rider.assignedOrderIds) {
               const o = this.ordersMap.get(id);
-              if (o && o.status === 'packed') o.status = 'picked';
+              if (o && o.status === 'packed') {
+                o.status = 'picked';
+                o.pickedAt = nowSimTime;
+                o.tripSize = rider.assignedOrderIds.length;
+              }
             }
             rider.route.shift();
           }
@@ -429,6 +440,7 @@ export class World {
       .sort((a, b) => (b.deliveredAt || 0) - (a.deliveredAt || 0))
       .slice(0, 30);
 
+    const riderHome = new Map(this.riders.map(r => [r.id, r.originalHomeStoreId ?? r.homeStoreId]));
     const orders: OrderSnapshot[] = [...activeOrders, ...deliveredOrders].map(o => ({
       id: o.id,
       lat: o.loc.lat,
@@ -444,6 +456,14 @@ export class World {
       createdAt: o.createdAt,
       deliveredAt: o.deliveredAt,
       zoneId: o.zoneId,
+      servingStoreId: o.servingStoreId,
+      assignedAt: o.assignedAt,
+      packedAt: o.packedAt,
+      pickedAt: o.pickedAt,
+      tripSize: o.tripSize,
+      riderHomeStoreId: riderHome.get(o.riderId ?? ''),
+      failReason: o.failReason,
+      items: o.items,
     }));
 
     const riders: RiderSnapshot[] = this.riders.map(r => ({
@@ -454,6 +474,7 @@ export class World {
       load: r.assignedOrderIds.length,
       routeLine: [[r.loc.lat, r.loc.lng] as [number, number], ...r.route.map(st => [st.loc.lat, st.loc.lng] as [number, number])],
       homeStoreId: r.homeStoreId,
+      deliveries: r.stats.delivered,
     }));
 
     const stores: StoreSnapshot[] = this.stores.map(s => ({

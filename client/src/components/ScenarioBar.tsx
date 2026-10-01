@@ -57,7 +57,7 @@ export const ScenarioBar: React.FC<ScenarioBarProps> = ({
       icon: <PackageX className="w-4 h-4 text-purple-400" />,
       color: 'hover:border-purple-500/50 hover:bg-purple-950/40 text-purple-300',
       activeColor: 'bg-purple-950/80 border-purple-500 text-purple-200 ring-1 ring-purple-500/50 shadow-purple-500/20',
-      desc: 'Top 5 SKUs depleted',
+      desc: 'Top 5 SKUs show out of stock',
     },
     {
       id: 'cancel_burst',

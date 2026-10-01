@@ -46,6 +46,7 @@ export const OrderLedger: React.FC<OrderLedgerProps> = ({
   const baselineStoreMap = new Map(baselineStores.map(s => [s.id, s.name]));
   const swarmStoreMap = new Map(swarmStores.map(s => [s.id, s.name]));
   const naiveStoreMap = new Map(naiveStores.map(s => [s.id, s.name]));
+  const storeNameOf = (id?: string) => (id ? swarmStoreMap.get(id) ?? baselineStoreMap.get(id) ?? naiveStoreMap.get(id) : undefined);
 
   // Combine unique order IDs sorted by createdAt descending
   const allOrderIdsSet = new Set([
@@ -226,7 +227,7 @@ export const OrderLedger: React.FC<OrderLedgerProps> = ({
           <div className="p-2.5 px-3 flex items-center justify-between bg-slate-950/40">
             <div className="flex items-center space-x-2">
               <span className="w-2 h-2 rounded-full bg-slate-500 inline-block" />
-              <span className="text-slate-400 uppercase tracking-wider text-[11px]">Naive (Single Store)</span>
+              <span className="text-slate-400 uppercase tracking-wider text-[11px]">Naive (Any-store Rider)</span>
             </div>
             <div className="flex items-center space-x-2 text-[10px]">
               <span className="text-slate-400">Delivered: <strong className="text-slate-200">{naiveDeliveredCount}</strong></span>
@@ -335,9 +336,7 @@ export const OrderLedger: React.FC<OrderLedgerProps> = ({
                     nOrder={nOrder}
                     bOrder={bOrder}
                     sOrder={sOrder}
-                    naiveStoreName={nOrder?.storeId ? naiveStoreMap.get(nOrder.storeId) : undefined}
-                    baselineStoreName={bOrder?.storeId ? baselineStoreMap.get(bOrder.storeId) : undefined}
-                    swarmStoreName={sOrder?.storeId ? swarmStoreMap.get(sOrder.storeId) : undefined}
+                    storeName={storeNameOf}
                     simTime={simTime}
                     seed={seed}
                   />
@@ -378,8 +377,8 @@ const OrderCell: React.FC<OrderCellProps> = ({
   if (!order) {
     return (
       <div className="p-3 text-slate-600 font-mono text-[11px] italic flex items-center justify-between">
-        <span>{orderId} — Not fulfilled</span>
-        <span className="text-rose-500 font-bold">❌ Stockout</span>
+        <span>{orderId} — outside this world's recent order window</span>
+        <span className="text-slate-500">—</span>
       </div>
     );
   }
@@ -475,9 +474,7 @@ interface ExpandedOrderCardProps {
   nOrder?: OrderSnapshot;
   bOrder?: OrderSnapshot;
   sOrder?: OrderSnapshot;
-  naiveStoreName?: string;
-  baselineStoreName?: string;
-  swarmStoreName?: string;
+  storeName: (id?: string) => string | undefined;
   simTime: number;
   seed: number;
 }
@@ -488,13 +485,11 @@ const ExpandedOrderCard: React.FC<ExpandedOrderCardProps> = ({
   nOrder,
   bOrder,
   sOrder,
-  naiveStoreName,
-  baselineStoreName,
-  swarmStoreName,
+  storeName,
   simTime,
   seed,
 }) => {
-  const items = getOrderItems(orderId);
+  const items = getOrderItems(orderId, (sOrder ?? bOrder ?? nOrder)?.items);
   const basketTotal = items.reduce((sum, item) => sum + item.price, 0);
 
   return (
@@ -523,112 +518,110 @@ const ExpandedOrderCard: React.FC<ExpandedOrderCardProps> = ({
         </div>
       </div>
 
-      {/* 3-Way Lifecycle Timeline Stepper */}
+      {/* 3-way lifecycle: every time below is a real event from that world's simulation */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {/* Naive World Details */}
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 space-y-2">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-            <span className="font-mono font-bold text-slate-400 text-[10px] uppercase">
-              1. Naive (Nearest Rider)
-            </span>
-            <span className="text-[9px] text-slate-500 font-mono">Single Store</span>
-          </div>
-
-          {nOrder ? (
-            <div className="space-y-1.5 text-[10px] font-mono">
-              <div className="text-slate-300">
-                <span className="text-slate-500 block">Courier:</span>
-                <strong>{nOrder.riderId ? getRiderName(nOrder.riderId) : 'Unassigned'}</strong>
-              </div>
-              <div className="pt-1 border-t border-slate-800/60 space-y-0.5">
-                <div>{formatSimTime(nOrder.createdAt)} → Placed</div>
-                {nOrder.deliveredAt ? (
-                  <div className={nOrder.isLate ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
-                    {formatSimTime(nOrder.deliveredAt)} → {nOrder.isLate ? 'Delivered Late ❌' : 'Delivered ✓'}
-                  </div>
-                ) : (
-                  <div className="text-amber-400">In Transit → ETA {formatSimTime(nOrder.projectedEta || nOrder.promisedBy)}</div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="text-rose-400 text-[11px] italic py-2">
-              Failed: SKU Stockout at local store.
-            </div>
-          )}
-        </div>
-
-        {/* Baseline World Details */}
-        <div className="bg-slate-900/60 border border-rose-900/40 rounded-xl p-3 space-y-2">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-            <span className="font-mono font-bold text-rose-400 text-[10px] uppercase">
-              2. Baseline (Greedy FIFO)
-            </span>
-            <span className="text-[9px] text-slate-500 font-mono">Solo Trips</span>
-          </div>
-
-          {bOrder ? (
-            <div className="space-y-1.5 text-[10px] font-mono">
-              <div className="text-slate-300">
-                <span className="text-slate-500 block">Store & Courier:</span>
-                <strong>{baselineStoreName || bOrder.storeId} • {bOrder.riderId ? getRiderName(bOrder.riderId) : 'Unassigned'}</strong>
-              </div>
-              <div className="pt-1 border-t border-slate-800/60 space-y-0.5">
-                <div>{formatSimTime(bOrder.createdAt)} → Placed</div>
-                <div>{formatSimTime(bOrder.createdAt + 120)} → Packing Queue</div>
-                {bOrder.deliveredAt ? (
-                  <div className={bOrder.isLate ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
-                    {formatSimTime(bOrder.deliveredAt)} → {bOrder.isLate ? `Delivered Late ❌ (+${Math.ceil((bOrder.deliveredAt - bOrder.promisedBy)/60)}m)` : 'Delivered ✓'}
-                  </div>
-                ) : (
-                  <div className="text-amber-400">In Transit → ETA {formatSimTime(bOrder.projectedEta || bOrder.promisedBy)}</div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="text-rose-400 text-[11px] italic py-2">
-              Failed: Inventory deficit.
-            </div>
-          )}
-        </div>
-
-        {/* Swarm World Details */}
-        <div className="bg-slate-900/60 border border-emerald-900/40 rounded-xl p-3 space-y-2">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-            <span className="font-mono font-bold text-emerald-400 text-[10px] uppercase flex items-center space-x-1">
-              <Sparkles className="w-3 h-3" />
-              <span>3. Swarm Engine ★</span>
-            </span>
-            <span className="text-[9px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.2 rounded">
-              Coupled + Batched
-            </span>
-          </div>
-
-          {sOrder ? (
-            <div className="space-y-1.5 text-[10px] font-mono">
-              <div className="text-slate-300">
-                <span className="text-slate-500 block">Optimal Store & Courier:</span>
-                <strong className="text-emerald-300">{swarmStoreName || sOrder.storeId} • {sOrder.riderId ? getRiderName(sOrder.riderId) : 'Unassigned'}</strong>
-              </div>
-              <div className="pt-1 border-t border-slate-800/60 space-y-0.5">
-                <div>{formatSimTime(sOrder.createdAt)} → Feasibility Verified</div>
-                <div>{formatSimTime(sOrder.createdAt + 60)} → Slot Dispatched</div>
-                {sOrder.deliveredAt ? (
-                  <div className="text-emerald-400 font-bold">
-                    {formatSimTime(sOrder.deliveredAt)} → Delivered (ON-TIME ✓)
-                  </div>
-                ) : (
-                  <div className="text-emerald-300">In Transit → Projected ETA {formatSimTime(sOrder.projectedEta || sOrder.promisedBy)}</div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="text-slate-400 text-[11px] italic py-2">
-              Pending allocation...
-            </div>
-          )}
-        </div>
+        <LifecycleCard world="naive" order={nOrder} storeName={storeName} simTime={simTime} />
+        <LifecycleCard world="baseline" order={bOrder} storeName={storeName} simTime={simTime} />
+        <LifecycleCard world="swarm" order={sOrder} storeName={storeName} simTime={simTime} />
       </div>
+    </div>
+  );
+};
+
+// ─── Lifecycle card (one world's view of one order) ─────────────────────────
+const WORLD_CARD = {
+  naive: { title: '1. Naive (Nearest Rider)', box: 'border-slate-800', titleCls: 'text-slate-400' },
+  baseline: { title: '2. Baseline (Greedy FIFO)', box: 'border-rose-900/40', titleCls: 'text-rose-400' },
+  swarm: { title: '3. Swarm Engine', box: 'border-emerald-900/40', titleCls: 'text-emerald-400' },
+} as const;
+
+interface LifecycleCardProps {
+  world: 'naive' | 'baseline' | 'swarm';
+  order?: OrderSnapshot;
+  storeName: (id?: string) => string | undefined;
+  simTime: number;
+}
+
+export const LifecycleCard: React.FC<LifecycleCardProps> = ({ world, order, storeName }) => {
+  const cfg = WORLD_CARD[world];
+  const batched = (order?.tripSize ?? 1) > 1;
+  const tag =
+    world === 'naive'
+      ? "Any store's rider"
+      : world === 'baseline'
+      ? 'Solo trips'
+      : order?.tripSize === undefined
+      ? 'Rider-optimised'
+      : batched
+      ? `Batched ×${order.tripSize}`
+      : 'Solo trip';
+
+  const serving = order ? storeName(order.servingStoreId ?? order.storeId) : undefined;
+  const riderHome = order ? storeName(order.riderHomeStoreId) : undefined;
+  const fromElsewhere =
+    !!order?.riderId && !!order.riderHomeStoreId && order.riderHomeStoreId !== (order.servingStoreId ?? order.storeId);
+  const lateSec = order?.deliveredAt !== undefined ? order.deliveredAt - order.promisedBy : 0;
+  const deliveredLate = order?.deliveredAt !== undefined && lateSec > 0;
+
+  return (
+    <div className={`bg-slate-900/60 border ${cfg.box} rounded-xl p-3 space-y-2`}>
+      <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+        <span className={`font-mono font-bold text-[10px] uppercase flex items-center space-x-1 ${cfg.titleCls}`}>
+          {world === 'swarm' && <Sparkles className="w-3 h-3" />}
+          <span>{cfg.title}</span>
+        </span>
+        <span className="text-[9px] text-slate-500 font-mono">{tag}</span>
+      </div>
+
+      {order ? (
+        <div className="space-y-1.5 text-[10px] font-mono">
+          <div className="text-slate-300">
+            <span className="text-slate-500 block">Serving store:</span>
+            <strong>{serving ?? '—'}</strong>
+          </div>
+          <div className="text-slate-300">
+            <span className="text-slate-500 block">Rider:</span>
+            <strong>{order.riderId ? getRiderName(order.riderId) : 'Waiting for a rider'}</strong>
+            {fromElsewhere && <span className="text-amber-400"> · rode in from {riderHome ?? 'another store'}</span>}
+          </div>
+          <div className="pt-1 border-t border-slate-800/60 space-y-0.5">
+            <div>
+              {formatSimTime(order.createdAt)} → Placed{' '}
+              <span className="text-slate-500">
+                (promised {Math.round((order.promisedBy - order.createdAt) / 60)} min, by {formatSimTime(order.promisedBy)})
+              </span>
+            </div>
+            {order.assignedAt !== undefined && (
+              <div>
+                {formatSimTime(order.assignedAt)} → Rider assigned{' '}
+                <span className="text-slate-500">(waited {formatDuration(order.assignedAt - order.createdAt)})</span>
+              </div>
+            )}
+            {order.packedAt !== undefined && <div>{formatSimTime(order.packedAt)} → Packed</div>}
+            {order.pickedAt !== undefined && (
+              <div>
+                {formatSimTime(order.pickedAt)} → Picked up
+                {batched && <span className="text-teal-300"> · trip of {order.tripSize} orders</span>}
+              </div>
+            )}
+            {order.deliveredAt !== undefined ? (
+              <div className={deliveredLate ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
+                {formatSimTime(order.deliveredAt)} →{' '}
+                {deliveredLate
+                  ? `Delivered Late ❌ (+${Math.ceil(lateSec / 60)}m)`
+                  : `Delivered on time ✓ (${formatDuration(-lateSec)} early)`}
+              </div>
+            ) : (
+              <div className={order.isLate ? 'text-rose-400' : 'text-amber-400'}>
+                In transit → ETA {formatSimTime(order.projectedEta || order.promisedBy)}
+                {order.isLate ? ' (running late)' : ''}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="text-slate-500 text-[11px] italic py-2">Not in this world's recent order window.</div>
+      )}
     </div>
   );
 };
