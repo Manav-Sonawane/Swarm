@@ -1,6 +1,7 @@
 import seedrandom from 'seedrandom';
 import { Order, DarkStore } from '../types';
 import { CONFIG } from '../config';
+import { travelTimeSec } from './travel';
 
 const SKUS = [
   'SKU-MILK-1L', 'SKU-BREAD-WHITE', 'SKU-EGGS-6P', 'SKU-BANANA-1KG',
@@ -74,10 +75,27 @@ export class OrderGenerator {
         lng: targetStore.loc.lng + lngOffset,
       };
 
-      // Priority determination (30% express, 70% regular)
-      const isExpress = this.rng() < 0.3;
-      const priority: 'express' | 'regular' = isExpress ? 'express' : 'regular';
-      const promisedSec = isExpress ? CONFIG.EXPRESS_PROMISED_SEC : CONFIG.REGULAR_PROMISED_SEC;
+      // Feasibility & Order Class determination
+      const storeEtaSec = travelTimeSec(targetStore.loc, customerLoc, simTime, 1.0, targetStore.id);
+      const totalTimeSec = storeEtaSec + CONFIG.AVG_PACK_TIME_SEC;
+
+      let orderClass: 'express' | 'regular' | 'infeasible';
+      let priority: 'express' | 'regular';
+      let promisedSec: number;
+
+      if (totalTimeSec <= CONFIG.EXPRESS_PROMISED_SEC) {
+        orderClass = 'express';
+        priority = 'express';
+        promisedSec = CONFIG.EXPRESS_PROMISED_SEC;
+      } else if (totalTimeSec <= CONFIG.REGULAR_PROMISED_SEC) {
+        orderClass = 'regular';
+        priority = 'regular';
+        promisedSec = CONFIG.REGULAR_PROMISED_SEC;
+      } else {
+        orderClass = 'infeasible';
+        priority = 'regular';
+        promisedSec = CONFIG.REGULAR_PROMISED_SEC + 600; // 30 min
+      }
 
       // Select 1 to 3 items
       const numItems = 1 + Math.floor(this.rng() * 3);
@@ -97,6 +115,7 @@ export class OrderGenerator {
         loc: customerLoc,
         items,
         priority,
+        orderClass,
         createdAt: this.nextArrivalSimTime,
         promisedBy: this.nextArrivalSimTime + promisedSec,
         status: 'placed',

@@ -184,6 +184,10 @@ export function runSwarmAllocation(
 
     // Update temporary state for the assigned rider in eligibleRidersMap
     targetRider.assignedOrderIds.push(order.id);
+    order.storeId = best.storeId;
+    const existingOrd = existingOrdersMap.get(order.id);
+    if (existingOrd) existingOrd.storeId = best.storeId;
+
     if (best.tripStops) {
       targetRider.route = best.tripStops;
     }

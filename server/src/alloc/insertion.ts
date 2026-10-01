@@ -48,10 +48,12 @@ export function evaluateInsertion(
     if (rider.status === 'delivering' || rider.status === 'returning' || rider.status === 'offline') {
       return null;
     }
-    // Check home or assigned store match
-    const existingFirstOrder = existingOrdersMap.get(rider.assignedOrderIds[0]);
-    if (existingFirstOrder && existingFirstOrder.storeId && existingFirstOrder.storeId !== store.id) {
-      return null;
+    // Check home or assigned store match for all existing orders
+    for (const oid of rider.assignedOrderIds) {
+      const existingOrder = existingOrdersMap.get(oid);
+      if (existingOrder && existingOrder.storeId && existingOrder.storeId !== store.id) {
+        return null;
+      }
     }
   } else {
     // Rider is idle or returning.

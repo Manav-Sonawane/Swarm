@@ -75,6 +75,8 @@ export interface Order {
   isLate?: boolean;
   decision?: DecisionRecord;
   holdUntil?: number; // for delayed commitment
+  packStartedAt?: number;
+  orderClass?: 'express' | 'regular' | 'infeasible';
   zoneId?: string;
 }
 

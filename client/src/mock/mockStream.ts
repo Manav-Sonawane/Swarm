@@ -6,7 +6,17 @@ export function getMockTickPayload(simTime: number = 19 * 3600): TickPayload {
     { id: 'store-bandra', name: 'Bandra West Dark Store', lat: 19.0596, lng: 72.8295, queue: 0 },
     { id: 'store-powai', name: 'Powai Dark Store', lat: 19.1176, lng: 72.9060, queue: 1 },
     { id: 'store-parel', name: 'Lower Parel Dark Store', lat: 18.9953, lng: 72.8300, queue: 0 },
+    { id: 'store-chembur', name: 'Chembur Dark Store', lat: 19.0449, lng: 72.8842, queue: 0 },
     { id: 'store-ghatkopar', name: 'Ghatkopar Dark Store', lat: 19.0860, lng: 72.9081, queue: 3 },
+    { id: 'store-dadar', name: 'Dadar Dark Store', lat: 19.0190, lng: 72.8430, queue: 0 },
+    { id: 'store-mahim', name: 'Mahim Dark Store', lat: 19.0400, lng: 72.8410, queue: 0 },
+    { id: 'store-santacruz', name: 'Santacruz Dark Store', lat: 19.0810, lng: 72.8370, queue: 0 },
+    { id: 'store-vileparle', name: 'Vile Parle Dark Store', lat: 19.1000, lng: 72.8440, queue: 0 },
+    { id: 'store-andheri-e', name: 'Andheri East Dark Store', lat: 19.1190, lng: 72.8580, queue: 0 },
+    { id: 'store-sion', name: 'Sion Dark Store', lat: 19.0410, lng: 72.8620, queue: 0 },
+    { id: 'store-bkc', name: 'BKC Dark Store', lat: 19.0640, lng: 72.8640, queue: 0 },
+    { id: 'store-kurla', name: 'Kurla Dark Store', lat: 19.0726, lng: 72.8845, queue: 0 },
+    { id: 'store-marol', name: 'Marol Dark Store', lat: 19.1000, lng: 72.8800, queue: 0 },
   ];
 
   const ridersBaseline: RiderSnapshot[] = [

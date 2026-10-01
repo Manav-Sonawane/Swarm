@@ -64,8 +64,8 @@ export const FinalScoreboardModal: React.FC<FinalScoreboardModalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="bg-gradient-to-br from-emerald-950/80 to-slate-900 border border-emerald-500/40 rounded-xl p-4 text-center">
             <span className="text-[10px] uppercase font-mono text-emerald-400 block mb-1">On-Time Rate Delta</span>
-            <strong className="text-2xl font-black text-emerald-400 font-mono">
-              +{onTimeImprovement.toFixed(1)}%
+            <strong className={`text-2xl font-black font-mono ${onTimeImprovement >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {onTimeImprovement >= 0 ? '+' : ''}{onTimeImprovement.toFixed(1)}%
             </strong>
             <span className="text-[11px] text-slate-400 block mt-1">Swarm vs Baseline</span>
           </div>
@@ -106,8 +106,8 @@ export const FinalScoreboardModal: React.FC<FinalScoreboardModalProps> = ({
                 </td>
                 <td className="p-3 text-slate-300">{baselineMetrics.onTimeRate}%</td>
                 <td className="p-3 font-bold text-emerald-400">{swarmMetrics.onTimeRate}%</td>
-                <td className="p-3 text-right font-bold text-emerald-400">
-                  +{onTimeImprovement.toFixed(1)}%
+                <td className={`p-3 text-right font-bold ${onTimeImprovement >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {onTimeImprovement >= 0 ? '+' : ''}{onTimeImprovement.toFixed(1)}%
                 </td>
               </tr>
               <tr>
@@ -151,7 +151,7 @@ export const FinalScoreboardModal: React.FC<FinalScoreboardModalProps> = ({
                 <td className="p-3 text-slate-300">{baselineMetrics.fairnessStdDev}</td>
                 <td className="p-3 font-bold text-emerald-400">{swarmMetrics.fairnessStdDev}</td>
                 <td className="p-3 text-right font-bold text-purple-400">
-                  {baselineMetrics.fairnessStdDev > swarmMetrics.fairnessStdDev ? 'More Balanced' : 'Equivalenced'}
+                  {baselineMetrics.fairnessStdDev > swarmMetrics.fairnessStdDev ? 'More Balanced' : baselineMetrics.fairnessStdDev < swarmMetrics.fairnessStdDev ? 'Less Balanced' : 'Equal'}
                 </td>
               </tr>
             </tbody>

@@ -60,6 +60,13 @@ export class World {
       order.riderId = rider.id;
       order.decision = assign.decision;
 
+      // Decrement inventory
+      for (const item of order.items) {
+        if (store.inventory[item.sku] !== undefined) {
+          store.inventory[item.sku] = Math.max(0, store.inventory[item.sku] - item.qty);
+        }
+      }
+
       // Add to store pack queue if not already there
       if (!store.packQueue.includes(order.id)) {
         store.packQueue.push(order.id);
@@ -70,8 +77,8 @@ export class World {
         rider.assignedOrderIds.push(order.id);
       }
 
-      // Update rider route
-      rider.route = assign.newRoute;
+      // Update rider route (deep copy to preserve decision tripStops)
+      rider.route = assign.newRoute.map(s => ({ ...s, loc: { ...s.loc } }));
 
       if (rider.status === 'idle') {
         rider.status = 'to_store';
@@ -82,11 +89,10 @@ export class World {
   public step(dtSimSec: number, nowSimTime: number, weatherMult: number = 1.0): void {
     if (dtSimSec <= 0) return;
 
-    // 1. Process Packing Queues in Stores
+    // 1. Process Packing Queues in Stores (True Queue with packStartedAt)
     for (const store of this.stores) {
       if (store.packQueue.length === 0) continue;
 
-      // Pack up to packingSlots orders simultaneously
       const activePackingCount = Math.min(store.packingSlots, store.packQueue.length);
       const packedThisTick: string[] = [];
 
@@ -96,19 +102,18 @@ export class World {
         if (order) {
           if (order.status === 'assigned') {
             order.status = 'packing';
+            order.packStartedAt = nowSimTime;
           }
-          // Decrement remaining pack time effectively by completing packed items
-          // Simplified simulation tick for packing:
-          // Order finishes packing after packTimeSec
-          const elapsed = nowSimTime - (order.decision?.decidedAt || nowSimTime);
-          if (elapsed >= store.packTimeSec) {
-            order.status = 'packed';
-            packedThisTick.push(orderId);
+          if (order.status === 'packing') {
+            const elapsed = nowSimTime - (order.packStartedAt ?? nowSimTime);
+            if (elapsed >= store.packTimeSec) {
+              order.status = 'packed';
+              packedThisTick.push(orderId);
+            }
           }
         }
       }
 
-      // Remove packed orders from queue
       for (const pId of packedThisTick) {
         const idx = store.packQueue.indexOf(pId);
         if (idx !== -1) store.packQueue.splice(idx, 1);
@@ -133,7 +138,7 @@ export class World {
         const homeStore = this.stores.find(s => s.id === rider.homeStoreId);
         if (homeStore && haversineKm(rider.loc, homeStore.loc) > 0.3) {
           rider.status = 'returning';
-          const distKm = haversineKm(rider.loc, homeStore.loc);
+          const distKm = routeDistanceKm(rider.loc, homeStore.loc);
           const trafficMult = getTrafficMultiplier(nowSimTime);
           const speedKmh = Math.max(5, CONFIG.BASE_SPEED_KMH * trafficMult * weatherMult);
           const moveDistKm = (speedKmh * dtSimSec) / 3600;
@@ -164,7 +169,6 @@ export class World {
 
         if (nextStop.type === 'pickup') {
           rider.status = 'at_store';
-          // Check departure rule
           const assignedOrders = rider.assignedOrderIds
             .map(id => this.ordersMap.get(id))
             .filter((o): o is Order => o !== undefined);
@@ -172,14 +176,33 @@ export class World {
           const allPacked = assignedOrders.every(o => o.status === 'packed' || o.status === 'picked');
           const isFullCapacity = rider.assignedOrderIds.length >= rider.capacity;
 
+          // Walk remaining route from store location to compute projectedDropEta & slack
+          let currLoc = rider.loc;
+          let currSimTime = nowSimTime;
           let minSlack = Infinity;
-          assignedOrders.forEach(o => {
-            const slk = o.promisedBy - nowSimTime;
-            if (slk < minSlack) minSlack = slk;
-          });
 
-          // Rider departs store if all orders packed AND (capacity full OR min slack < DEPART_SLACK OR baseline world)
-          const shouldDepart = allPacked && (this.name === 'baseline' || isFullCapacity || minSlack < CONFIG.DEPART_SLACK);
+          for (let sIdx = 1; sIdx < rider.route.length; sIdx++) {
+            const st = rider.route[sIdx];
+            const legSec = travelTimeSec(currLoc, st.loc, currSimTime, weatherMult, rider.homeStoreId);
+            currSimTime += legSec;
+            currLoc = st.loc;
+            if (st.type === 'drop' && st.orderId) {
+              const ord = this.ordersMap.get(st.orderId);
+              if (ord) {
+                const dropSlack = ord.promisedBy - currSimTime;
+                if (dropSlack < minSlack) minSlack = dropSlack;
+              }
+            }
+          }
+
+          if (minSlack === Infinity && assignedOrders.length > 0) {
+            assignedOrders.forEach(o => {
+              const slk = o.promisedBy - nowSimTime;
+              if (slk < minSlack) minSlack = slk;
+            });
+          }
+
+          const shouldDepart = allPacked && (this.name === 'baseline' || isFullCapacity || minSlack < CONFIG.DEPART_SLACK || minSlack <= 0);
 
           if (shouldDepart) {
             rider.status = 'delivering';
@@ -197,6 +220,7 @@ export class World {
           if (order) {
             order.status = 'delivered';
             order.deliveredAt = nowSimTime;
+            order.isLate = nowSimTime > order.promisedBy;
             rider.stats.delivered += 1;
           }
 
@@ -224,16 +248,46 @@ export class World {
       }
     }
 
-    // 3. Update Lateness Status for Active Orders
+    // 3. Update Lateness Status for Active Orders accurately
     this.ordersMap.forEach(order => {
-      if (order.status !== 'delivered' && order.status !== 'cancelled') {
-        const projectedEta = order.decision?.chosen.eta || (nowSimTime + 600);
+      if (order.status === 'delivered') {
+        order.isLate = (order.deliveredAt ?? nowSimTime) > order.promisedBy;
+      } else if (order.status !== 'cancelled') {
+        let projectedEta = nowSimTime + 600;
+        if (order.riderId) {
+          const rider = this.riders.find(r => r.id === order.riderId);
+          if (rider && rider.route.length > 0) {
+            let currLoc = rider.loc;
+            let currTime = nowSimTime;
+            for (const st of rider.route) {
+              currTime += travelTimeSec(currLoc, st.loc, currTime, weatherMult, rider.homeStoreId);
+              currLoc = st.loc;
+              if (st.type === 'drop' && st.orderId === order.id) {
+                projectedEta = currTime;
+                break;
+              }
+            }
+          }
+        } else {
+          // Unassigned order: estimate with nearest store
+          let nearestDist = Infinity;
+          let nearestStore = this.stores[0];
+          for (const s of this.stores) {
+            const d = haversineKm(s.loc, order.loc);
+            if (d < nearestDist) {
+              nearestDist = d;
+              nearestStore = s;
+            }
+          }
+          const travelSec = travelTimeSec(nearestStore.loc, order.loc, nowSimTime, weatherMult, nearestStore.id);
+          projectedEta = nowSimTime + travelSec + nearestStore.packTimeSec;
+        }
         order.isLate = nowSimTime > order.promisedBy || projectedEta > order.promisedBy;
       }
     });
   }
 
-  public getSnapshot(): WorldSnapshot {
+  public getSnapshot(nowSimTime: number = this.startSimTime + 10): WorldSnapshot {
     const activeAndRecentOrders: OrderSnapshot[] = [];
     const allOrdersList = Array.from(this.ordersMap.values());
 
@@ -289,7 +343,7 @@ export class World {
     const metrics = this.metricsEngine.calculateMetrics(
       allOrdersList,
       this.riders,
-      this.startSimTime + 10,
+      nowSimTime,
       this.startSimTime
     );
 

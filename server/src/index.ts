@@ -41,6 +41,7 @@ function resetSimulation(seed: number = currentSeed) {
   worldA.reset(startSimTime);
   worldB.reset(startSimTime);
   orderGenerator.reset(seed, startSimTime);
+  scenarioEngine.reset();
   lastSwarmEpochSimTime = startSimTime;
 
   io.emit('event', {
@@ -102,16 +103,17 @@ setInterval(() => {
   }
 
   // 4. Emit Tick Snapshots to Socket Clients
+  const currentSimTime = simClock.getSimTime();
   const payload: TickPayload = {
-    simTime: simClock.getSimTime(),
+    simTime: currentSimTime,
     speed: simClock.getSpeed(),
     running: isRunning,
     seed: simClock.getSeed(),
     activeScenario: scenarioEngine.getActiveScenario(),
     weatherMult: scenarioEngine.getWeatherMult(),
     worlds: {
-      baseline: worldA.getSnapshot(),
-      swarm: worldB.getSnapshot(),
+      baseline: worldA.getSnapshot(currentSimTime),
+      swarm: worldB.getSnapshot(currentSimTime),
     },
   };
 
@@ -122,17 +124,18 @@ setInterval(() => {
 io.on('connection', socket => {
   console.log(`[Socket] Client connected: ${socket.id}`);
 
+  const currentSimTime = simClock.getSimTime();
   // Send initial tick state immediately
   socket.emit('tick', {
-    simTime: simClock.getSimTime(),
+    simTime: currentSimTime,
     speed: simClock.getSpeed(),
     running: simClock.isRunning(),
     seed: simClock.getSeed(),
     activeScenario: scenarioEngine.getActiveScenario(),
     weatherMult: scenarioEngine.getWeatherMult(),
     worlds: {
-      baseline: worldA.getSnapshot(),
-      swarm: worldB.getSnapshot(),
+      baseline: worldA.getSnapshot(currentSimTime),
+      swarm: worldB.getSnapshot(currentSimTime),
     },
   });
 
@@ -142,7 +145,7 @@ io.on('connection', socket => {
     } else if (data.action === 'pause') {
       simClock.pause();
     } else if (data.action === 'reset') {
-      resetSimulation(data.seed || currentSeed);
+      resetSimulation(data.seed ?? currentSeed);
     }
 
     if (data.speed !== undefined) {
@@ -195,15 +198,22 @@ app.get('/api/decision/:world/:orderId', (req, res) => {
 });
 
 app.get('/api/export', (req, res) => {
-  const snapshotA = worldA.getSnapshot();
-  const snapshotB = worldB.getSnapshot();
+  const currentSimTime = simClock.getSimTime();
+  const snapshotA = worldA.getSnapshot(currentSimTime);
+  const snapshotB = worldB.getSnapshot(currentSimTime);
 
   return res.json({
-    simTime: simClock.getSimTime(),
+    simTime: currentSimTime,
     seed: simClock.getSeed(),
     baseline: snapshotA.metrics,
     swarm: snapshotB.metrics,
   });
+});
+
+app.get('/api/stores', (req, res) => {
+  const currentSimTime = simClock.getSimTime();
+  const snapshotA = worldA.getSnapshot(currentSimTime);
+  return res.json(snapshotA.stores);
 });
 
 const PORT = process.env.PORT || 5000;

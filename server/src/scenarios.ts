@@ -15,6 +15,11 @@ export class ScenarioEngine {
     return this.weatherMult;
   }
 
+  public reset(): void {
+    this.activeScenario = 'normal';
+    this.weatherMult = 1.0;
+  }
+
   public triggerScenario(
     name: ScenarioName,
     worldA: World,
@@ -58,41 +63,44 @@ export class ScenarioEngine {
         break;
       }
       case 'riders_offline': {
+        // Pick same 3 rider IDs in both worlds — rider-2 (Andheri), rider-8 (Bandra), rider-14 (Powai)
+        const targetRiderIds = new Set(['rider-2', 'rider-8', 'rider-14']);
+
         [worldA, worldB].forEach(world => {
-          const activeRiders = world.riders.filter(r => r.status !== 'offline');
-          // Pick 3 random riders
-          const countToOffline = Math.min(3, activeRiders.length);
-          for (let i = 0; i < countToOffline; i++) {
-            const rIdx = Math.floor(Math.random() * activeRiders.length);
-            const rider = activeRiders.splice(rIdx, 1)[0];
-            rider.status = 'offline';
+          world.riders.forEach(rider => {
+            if (targetRiderIds.has(rider.id)) {
+              rider.status = 'offline';
 
-            // Release unpicked orders back to pool
-            const unpickedIds = rider.assignedOrderIds.filter(id => {
-              const o = world.ordersMap.get(id);
-              return o && o.status !== 'picked' && o.status !== 'delivered' && o.status !== 'cancelled';
-            });
+              // Release ALL non-delivered orders on this rider back to placed pool
+              const affectedOrderIds = [...rider.assignedOrderIds];
+              for (const oId of affectedOrderIds) {
+                const ord = world.ordersMap.get(oId);
+                if (ord && ord.status !== 'delivered' && ord.status !== 'cancelled') {
+                  ord.status = 'placed';
+                  ord.riderId = undefined;
+                  ord.storeId = undefined;
+                  ord.decision = undefined;
+                  ord.holdUntil = undefined;
+                  ord.packStartedAt = undefined;
 
-            for (const uId of unpickedIds) {
-              const ord = world.ordersMap.get(uId);
-              if (ord) {
-                ord.status = 'placed';
-                ord.riderId = undefined;
-                ord.storeId = undefined;
-                ord.holdUntil = undefined;
+                  // Remove from store pack queues
+                  world.stores.forEach(s => {
+                    s.packQueue = s.packQueue.filter(id => id !== oId);
+                  });
+                }
               }
-            }
 
-            rider.assignedOrderIds = rider.assignedOrderIds.filter(id => !unpickedIds.includes(id));
-            rider.route = [];
-          }
+              rider.assignedOrderIds = [];
+              rider.route = [];
+            }
+          });
         });
 
         events.push({
           simTime: nowSimTime,
           world: 'both',
           kind: 'SCENARIO_RIDERS_OFFLINE',
-          message: '🛵 Disruption: 3 riders went offline mid-shift! Unpicked orders released back to pool for re-optimization.',
+          message: '🛵 Disruption: 3 riders went offline mid-shift! Active orders released back to pool for re-optimization.',
         });
         break;
       }
@@ -114,17 +122,19 @@ export class ScenarioEngine {
         break;
       }
       case 'cancel_burst': {
-        let cancelCount = 0;
+        // Find unpicked order IDs shared between both worlds
+        const sharedUnpicked = Array.from(worldA.ordersMap.values())
+          .filter(o => o.status === 'placed' || o.status === 'assigned' || o.status === 'packing' || o.status === 'packed')
+          .map(o => o.id);
+
+        const numToCancel = Math.max(1, Math.floor(sharedUnpicked.length * 0.1));
+        const cancelTargetIds = sharedUnpicked.slice(0, numToCancel);
+
         [worldA, worldB].forEach(world => {
-          const unpickedOrders = Array.from(world.ordersMap.values()).filter(
-            o => o.status === 'placed' || o.status === 'assigned' || o.status === 'packing' || o.status === 'packed'
-          );
-          const numToCancel = Math.max(1, Math.floor(unpickedOrders.length * 0.1));
-          for (let i = 0; i < numToCancel; i++) {
-            const target = unpickedOrders[i];
-            if (target) {
+          for (const cId of cancelTargetIds) {
+            const target = world.ordersMap.get(cId);
+            if (target && target.status !== 'delivered') {
               target.status = 'cancelled';
-              cancelCount++;
               // Remove from store pack queues and rider assigned orders
               world.stores.forEach(s => {
                 s.packQueue = s.packQueue.filter(id => id !== target.id);
@@ -141,7 +151,7 @@ export class ScenarioEngine {
           simTime: nowSimTime,
           world: 'both',
           kind: 'SCENARIO_CANCEL',
-          message: `❌ Cancellation Burst: 10% of active unpicked orders (${cancelCount} orders) cancelled.`,
+          message: `❌ Cancellation Burst: 10% of active unpicked orders (${cancelTargetIds.length} orders) cancelled.`,
         });
         break;
       }

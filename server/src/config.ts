@@ -8,7 +8,7 @@ export const CONFIG = {
   W_LOAD: 10.0, // cost penalty weight per existing assigned order on rider
   DEFAULT_SIM_SPEED: 10, // 1 real second = 10 sim seconds
   EXPRESS_PROMISED_SEC: 600, // 10 minutes for express orders
-  REGULAR_PROMISED_SEC: 900, // 15 minutes for regular orders
+  REGULAR_PROMISED_SEC: 1200, // 20 minutes for regular orders
   AVG_PACK_TIME_SEC: 90, // average pack time per order in seconds
   DEFAULT_SEED: 42,
   // 12 km/h + 1.3 road factor => express (10 min incl. 2 min packing) reaches ~1.2 km straight-line
