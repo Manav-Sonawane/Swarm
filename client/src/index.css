@@ -70,43 +70,119 @@
   }
 }
 
+@layer utilities {
+  .border-line {
+    border-color: rgb(var(--line));
+  }
+  .border-edge {
+    border-color: rgb(var(--edge));
+  }
+  .bg-panel {
+    background-color: rgb(var(--panel));
+  }
+  .bg-raise {
+    background-color: rgb(var(--raise));
+  }
+  .bg-lift {
+    background-color: rgb(var(--lift));
+  }
+  .text-2xs {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+  }
+  .text-dim {
+    color: rgb(var(--dim));
+  }
+  .text-mute {
+    color: rgb(var(--mute));
+  }
+  .text-ink {
+    color: rgb(var(--ink));
+  }
+}
+
 @layer components {
   .panel {
-    @apply rounded-2xl border border-line bg-panel;
+    @apply rounded-2xl border;
+    border-color: rgb(var(--line));
+    background-color: rgb(var(--panel));
   }
   .eyebrow {
-    @apply font-mono text-2xs uppercase tracking-[0.12em] text-dim;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgb(var(--dim));
   }
   .num {
     font-variant-numeric: tabular-nums;
   }
   .btn {
-    @apply inline-flex h-9 items-center gap-2 rounded-xl border border-line bg-raise px-3 text-[13px] font-medium text-ink transition-[background,border-color,transform] duration-150 hover:border-edge hover:bg-lift active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-[13px] font-medium transition-[background,border-color,transform] duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
+    border-color: rgb(var(--line));
+    background-color: rgb(var(--raise));
+    color: rgb(var(--ink));
+  }
+  .btn:hover {
+    border-color: rgb(var(--edge));
+    background-color: rgb(var(--lift));
   }
   .btn-brand {
-    @apply border-transparent bg-brand font-semibold text-[#1b1406] hover:bg-brand/90 hover:border-transparent;
+    @apply border-transparent font-semibold hover:border-transparent;
+    background-color: rgb(var(--brand));
+    color: #1b1406;
+  }
+  .btn-brand:hover {
+    background-color: rgb(var(--brand) / 0.9);
   }
   .btn-ghost {
-    @apply border-transparent bg-transparent hover:bg-raise hover:border-line;
+    @apply border-transparent bg-transparent;
+  }
+  .btn-ghost:hover {
+    background-color: rgb(var(--raise));
+    border-color: rgb(var(--line));
   }
   .seg {
-    @apply inline-flex rounded-xl border border-line bg-bg p-0.5;
+    @apply inline-flex rounded-xl border p-0.5;
+    border-color: rgb(var(--line));
+    background-color: rgb(var(--bg));
   }
   .seg > button {
-    @apply h-8 rounded-[10px] px-3 text-[12.5px] font-medium text-mute transition-colors duration-150 hover:text-ink;
+    @apply h-8 rounded-[10px] px-3 text-[12.5px] font-medium transition-colors duration-150;
+    color: rgb(var(--mute));
+  }
+  .seg > button:hover {
+    color: rgb(var(--ink));
   }
   .seg > button[aria-pressed='true'] {
-    @apply bg-lift text-ink shadow-[inset_0_0_0_1px_rgb(var(--edge))];
+    @apply shadow-[inset_0_0_0_1px_rgb(var(--edge))];
+    background-color: rgb(var(--lift));
+    color: rgb(var(--ink));
   }
   .chip {
     @apply inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-[11.5px] font-medium;
   }
   .field {
-    @apply h-9 w-full rounded-xl border border-line bg-bg px-3 text-[13px] text-ink outline-none transition-colors placeholder:text-dim focus:border-brand/70;
+    @apply h-9 w-full rounded-xl border px-3 text-[13px] outline-none transition-colors;
+    border-color: rgb(var(--line));
+    background-color: rgb(var(--bg));
+    color: rgb(var(--ink));
+  }
+  .field::placeholder {
+    color: rgb(var(--dim));
+  }
+  .field:focus {
+    border-color: rgb(var(--brand) / 0.7);
   }
   .screen {
-    @apply animate-rise;
+    animation: rise 260ms cubic-bezier(.2,.7,.2,1) both;
   }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 
 /* ---------------------------------------------------------------- maps */
