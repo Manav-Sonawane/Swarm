@@ -27,7 +27,6 @@ export const CONFIG = {
 
   // Store / rider candidate pruning (CONTEXT §5)
   GEOFENCE_KM: 3, // straight-line radius a store can serve
-  CANDIDATE_STORES: 3, // best stores (packing delay + travel) considered per order
   RIDER_CANDIDATES_PER_STORE: 10, // nearest riders considered per candidate store
   ETA_RISK_PAD: 1.05, // travel-time pad Swarm uses when checking that a trip keeps its promises. The simulator has no random travel noise, so a bigger pad only shrinks the feasible set (1.15 scored 2 pts lower)
   CLASSIFY_PAD: 1.15, // pad used only to classify new orders (express / regular / infeasible); same for every world
@@ -60,13 +59,7 @@ export const CONFIG = {
   TRAFFIC_MULTIPLIER_PEAK: 1.3, // travel-time multiplier, peak 8–11 and 18–21
   TRAFFIC_MULTIPLIER_MONSOON: 1.5, // travel-time multiplier, stacks with peak
   RIDERS_PER_STORE: 6,
-  ORDERS_PER_HOUR: 300, // base Poisson demand across all stores (spike = 3x); Baseline ~80% on time at this load
-  // Riders belong to a store pool (CONTEXT §1). 0 = home store only; >0 = may also pick up at stores
-  // within this distance of their home store.
-  RIDER_BORROW_KM: 0,
-  // Swarm only: cross-store rider pooling. A rider may pick up at any online store within this distance of
-  // its home store, and rests at the nearest such store between trips instead of always returning home.
-  // The comparison worlds keep RIDER_BORROW_KM (home store only).
-  SWARM_BORROW_KM: 3.5, // pooling radius (km). Gives +0.8 pt on-time. Ablation: letting Baseline pool too makes IT worse (57.8 -> 52.2)
-  SWARM_REPOSITION: true, // with pooling, idle riders rest at the nearest store they may serve (false = always go home)
+  ORDERS_PER_HOUR: 255, // base Poisson demand across all stores (spike = 3x). All orders are accepted now (no stock rejections); 255/h gives Baseline ~77% on time in steady conditions
+  // Riders belong to exactly one dark store's pool (Zepto/Blinkit style) and only pick up there; pooling riders
+  // across stores was tested and only helped back when orders could hop between stores.
 };

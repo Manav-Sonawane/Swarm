@@ -4,7 +4,8 @@ import { generateSeedRiders } from '../seed/riders';
 import { routeDistanceKm, getTrafficMultiplier, travelTimeSec, haversineKm } from './travel';
 import { MetricsEngine } from '../metrics';
 import { CONFIG } from '../config';
-import { DropSpec, QueueForecast, canServe, forecastQueue, hasStock, planTrip } from '../alloc/feasibility';
+import { DropSpec, QueueForecast, forecastQueue, planTrip } from '../alloc/feasibility';
+import { servingStoreFor } from './store-select';
 import { orderPackingQueue } from '../alloc/packing';
 
 const TERMINAL = new Set(['delivered', 'cancelled', 'failed', 'rejected']);
@@ -97,13 +98,6 @@ export class World {
       order.holdUntil = undefined;
       order.decision = { ...assign.decision, decisionMs };
 
-      // Reserve stock (restored if the order is released before pickup)
-      for (const item of order.items) {
-        if (store.inventory[item.sku] !== undefined) {
-          store.inventory[item.sku] = Math.max(0, store.inventory[item.sku] - item.qty);
-        }
-      }
-
       if (!store.packQueue.includes(order.id)) store.packQueue.push(order.id);
       if (!rider.assignedOrderIds.includes(order.id)) rider.assignedOrderIds.push(order.id);
 
@@ -115,13 +109,6 @@ export class World {
 
   /** Puts an order back to `placed` and removes it from every queue and trip. */
   public releaseOrder(order: Order): void {
-    // Goods not yet picked up go back on the shelf
-    const store = this.stores.find(s => s.id === order.storeId);
-    if (store && order.status !== 'picked' && order.status !== 'placed') {
-      for (const item of order.items) {
-        if (store.inventory[item.sku] !== undefined) store.inventory[item.sku] += item.qty;
-      }
-    }
     for (const s of this.stores) s.packQueue = s.packQueue.filter(id => id !== order.id);
     for (const r of this.riders) {
       if (!r.assignedOrderIds.includes(order.id)) continue;
@@ -147,15 +134,11 @@ export class World {
     }
   }
 
-  /**
-   * Moves an assigned-but-not-picked order to another rider (rebalance). Packing progress is kept when
-   * the store doesn't change; a store change re-queues the order and moves the stock reservation.
-   */
+  /** Moves an assigned-but-not-picked order to another rider of the same store (rebalance); packing carries on. */
   public reassignOrder(order: Order, a: Assignment, gainSec: number, rescued: boolean, now: number, decisionMs: number): void {
     const fromRider = this.riders.find(r => r.id === order.riderId);
     const toRider = this.riders.find(r => r.id === a.riderId);
-    const toStore = this.stores.find(s => s.id === a.storeId);
-    if (!toRider || !toStore) return;
+    if (!toRider) return;
 
     if (fromRider) {
       fromRider.assignedOrderIds = fromRider.assignedOrderIds.filter(id => id !== order.id);
@@ -166,24 +149,7 @@ export class World {
       }
     }
 
-    if (order.storeId !== toStore.id) {
-      const fromStore = this.stores.find(s => s.id === order.storeId);
-      if (fromStore) {
-        fromStore.packQueue = fromStore.packQueue.filter(id => id !== order.id);
-        for (const item of order.items) {
-          if (fromStore.inventory[item.sku] !== undefined) fromStore.inventory[item.sku] += item.qty;
-        }
-      }
-      for (const item of order.items) {
-        if (toStore.inventory[item.sku] !== undefined) toStore.inventory[item.sku] = Math.max(0, toStore.inventory[item.sku] - item.qty);
-      }
-      toStore.packQueue.push(order.id);
-      order.status = 'assigned';
-      order.packStartedAt = undefined;
-    }
-
     const fromId = order.riderId;
-    order.storeId = toStore.id;
     order.riderId = toRider.id;
     order.decision = { ...a.decision, decisionMs };
     if (!toRider.assignedOrderIds.includes(order.id)) toRider.assignedOrderIds.push(order.id);
@@ -199,17 +165,38 @@ export class World {
     });
   }
 
-  /** store_offline: no new orders; unpicked orders go back to the pool; its riders join the nearest online store. */
-  public setStoreOffline(storeId: string): { released: number; lentRiders: number } {
+  /**
+   * store_offline: the store takes no new orders. Its not-yet-picked orders are re-served from the next-nearest
+   * online store that has every item (else they fail: the app can't offer them anywhere nearby), and its riders
+   * join the nearest online store until the store is back.
+   */
+  public setStoreOffline(
+    storeId: string,
+    now: number,
+    canFulfil: (store: DarkStore, order: Order) => boolean
+  ): { rerouted: number; failed: number; lentRiders: number } {
     const store = this.stores.find(s => s.id === storeId);
-    if (!store || store.offline) return { released: 0, lentRiders: 0 };
+    if (!store || store.offline) return { rerouted: 0, failed: 0, lentRiders: 0 };
     store.offline = true;
 
-    let released = 0;
+    let rerouted = 0;
+    let failed = 0;
     this.ordersMap.forEach(o => {
-      if (o.storeId === storeId && (o.status === 'assigned' || o.status === 'packing' || o.status === 'packed')) {
-        this.releaseOrder(o);
-        released++;
+      if (o.servingStoreId !== storeId || !['placed', 'assigned', 'packing', 'packed'].includes(o.status)) return;
+      if (o.status !== 'placed') this.releaseOrder(o);
+      const tried = new Set<string>();
+      let next = servingStoreFor(o.loc, this.stores, tried);
+      while (next && !canFulfil(next, o)) {
+        tried.add(next.id);
+        next = servingStoreFor(o.loc, this.stores, tried);
+      }
+      if (next) {
+        o.servingStoreId = next.id;
+        o.zoneId = next.id;
+        rerouted++;
+      } else {
+        this.endOrder(o, 'failed', now, `${store.name} went offline and no other store nearby has the items`);
+        failed++;
       }
     });
 
@@ -222,7 +209,7 @@ export class World {
       r.homeStoreId = nearest.id;
       lentRiders++;
     }
-    return { released, lentRiders };
+    return { rerouted, failed, lentRiders };
   }
 
   /** Brings every offline store back and returns lent riders to their own pools. */
@@ -241,23 +228,6 @@ export class World {
       }
     }
     return restored;
-  }
-
-  /** Where an idle rider waits: its home store, or (Swarm pooling) the nearest store it may serve. */
-  private restStore(rider: Rider): DarkStore | undefined {
-    const home = this.stores.find(s => s.id === rider.homeStoreId);
-    if (this.name !== 'swarm' || CONFIG.SWARM_BORROW_KM <= 0 || !CONFIG.SWARM_REPOSITION) return home;
-    let best = home;
-    let bestD = home ? haversineKm(rider.loc, home.loc) : Infinity;
-    for (const s of this.stores) {
-      if (!canServe(rider, s, this.stores, CONFIG.SWARM_BORROW_KM)) continue;
-      const d = haversineKm(rider.loc, s.loc);
-      if (d < bestD) {
-        best = s;
-        bestD = d;
-      }
-    }
-    return best;
   }
 
   public step(dtSimSec: number, nowSimTime: number, weatherMult: number = 1.0): void {
@@ -295,7 +265,7 @@ export class World {
       if (rider.route.length === 0) {
         if (rider.status !== 'idle' && rider.status !== 'returning') rider.status = 'idle';
 
-        const homeStore = this.restStore(rider);
+        const homeStore = this.stores.find(s => s.id === rider.homeStoreId);
         if (homeStore && haversineKm(rider.loc, homeStore.loc) > 0.3) {
           rider.status = 'returning';
           const distKm = routeDistanceKm(rider.loc, homeStore.loc);
@@ -436,13 +406,11 @@ export class World {
       if (isTerminal(order)) return;
       let eta = projected.get(order.id);
       if (eta === undefined) {
-        // Unassigned: best stocked store in the geofence, packing delay + travel
-        eta = Infinity;
-        for (const s of this.stores) {
-          if (s.offline || haversineKm(s.loc, order.loc) > CONFIG.GEOFENCE_KM || !hasStock(s, order)) continue;
-          eta = Math.min(eta, fc(s).nextFinishAt(0) + travelTimeSec(s.loc, order.loc, now, weatherMult));
-        }
-        if (eta === Infinity) eta = Math.max(now, order.promisedBy) + 1;
+        // Unassigned: the serving store's packing delay + travel
+        const s = this.stores.find(st => st.id === order.servingStoreId);
+        eta = s && !s.offline
+          ? fc(s).nextFinishAt(0) + travelTimeSec(s.loc, order.loc, now, weatherMult)
+          : Math.max(now, order.promisedBy) + 1;
       }
       order.projectedEta = eta;
       order.isLate = now > order.promisedBy || eta > order.promisedBy;

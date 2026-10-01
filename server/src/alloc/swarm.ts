@@ -1,14 +1,14 @@
 import { DarkStore, Rider, Order, Assignment, DecisionRecord, CandidateScore } from '../types';
 import { CONFIG } from '../config';
-import { selectCandidateStores, StoreCandidate } from '../sim/store-select';
+import { storeCandidate, StoreCandidate } from '../sim/store-select';
 import { haversineKm } from '../sim/travel';
 import { QueueForecast, canServe, forecastQueue } from './feasibility';
 import { RiderPlanState, better, evaluateInsertion, fairPenalty } from './insertion';
 
 /**
- * Rolling-horizon insertion (CONTEXT §5): for each pending order choose store + rider + drop
- * position together, keep only options that keep every promise on the trip, and assign the most
- * urgent / highest-regret orders first so scarce riders go where they matter most.
+ * Rolling-horizon insertion (CONTEXT §5): for each pending order (served from the customer's nearest store)
+ * choose the rider and drop position together, keep only options that keep every promise on the trip, and
+ * assign the most urgent / highest-regret orders first so scarce riders go where they matter most.
  */
 export function runSwarmAllocation(
   pendingOrders: Order[],
@@ -39,35 +39,26 @@ export function runSwarmAllocation(
     return f;
   };
 
-  const evaluateAt = (order: Order, storeCands: StoreCandidate[], cands: CandidateScore[]) => {
-    for (const cs of storeCands) {
-      const fc = forecastOf(cs.store);
-      const newReadyAt = fc.nextFinishAt(extraQueued.get(cs.store.id) ?? 0);
-      const pool = [...states.values()]
-        .filter(s => (!s.tripStoreId || s.tripStoreId === cs.store.id) && canServe(s.rider, cs.store, stores, CONFIG.SWARM_BORROW_KM))
-        .map(s => ({ s, d: haversineKm(s.rider.loc, cs.store.loc) }))
-        .sort((a, b) => a.d - b.d || a.s.rider.id.localeCompare(b.s.rider.id))
-        .slice(0, CONFIG.RIDER_CANDIDATES_PER_STORE);
-      for (const { s } of pool) {
-        const c = evaluateInsertion(order, s, cs.store, orders, fc, newReadyAt, nowSimTime, weatherMult);
-        if (c) cands.push(c);
-      }
-    }
-  };
-
-  // Best CANDIDATE_STORES first; if none of them keeps the promise, widen to every stocked store in the
-  // geofence (like a dispatcher trying the next store over when the nearby pools are busy)
+  // Zepto/Blinkit-style: the store is fixed (the customer's serving store, which has every item in stock);
+  // Swarm chooses the rider and the position in that rider's trip.
   const evaluate = (order: Order) => {
-    const all = selectCandidateStores(order, stores, orders, nowSimTime, weatherMult, { rank: 'eta', extraQueued, limit: stores.length });
-    let storeCands = all.slice(0, CONFIG.CANDIDATE_STORES);
+    const store = stores.find(st => st.id === order.servingStoreId);
+    if (!store || store.offline) return { cands: [] as CandidateScore[], storeCands: [] as StoreCandidate[] };
+    const fc = forecastOf(store);
+    const extra = extraQueued.get(store.id) ?? 0;
+    const newReadyAt = fc.nextFinishAt(extra);
+    const pool = [...states.values()]
+      .filter(s => (!s.tripStoreId || s.tripStoreId === store.id) && canServe(s.rider, store))
+      .map(s => ({ s, d: haversineKm(s.rider.loc, store.loc) }))
+      .sort((x, y) => x.d - y.d || x.s.rider.id.localeCompare(y.s.rider.id))
+      .slice(0, CONFIG.RIDER_CANDIDATES_PER_STORE);
     const cands: CandidateScore[] = [];
-    evaluateAt(order, storeCands, cands);
-    if (!cands.some(c => c.feasible) && all.length > storeCands.length) {
-      evaluateAt(order, all.slice(storeCands.length), cands);
-      storeCands = all;
+    for (const { s } of pool) {
+      const c = evaluateInsertion(order, s, store, orders, fc, newReadyAt, nowSimTime, weatherMult);
+      if (c) cands.push(c);
     }
-    cands.sort((a, b) => (better(a, b) ? -1 : better(b, a) ? 1 : a.riderId.localeCompare(b.riderId)));
-    return { cands, storeCands };
+    cands.sort((x, y) => (better(x, y) ? -1 : better(y, x) ? 1 : x.riderId.localeCompare(y.riderId)));
+    return { cands, storeCands: [storeCandidate(store, order, orders, nowSimTime, weatherMult, extra)] };
   };
 
   // Pass 1: urgency + regret for ordering

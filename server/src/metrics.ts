@@ -94,7 +94,7 @@ export class MetricsEngine {
     const ordersPerZone: Record<string, number> = {};
     for (const o of allOrders) {
       if (o.class) ordersByClass[o.class] += 1;
-      const zone = o.storeId ?? o.zoneId;
+      const zone = o.servingStoreId ?? o.storeId;
       if (zone) ordersPerZone[zone] = (ordersPerZone[zone] ?? 0) + 1;
     }
 
