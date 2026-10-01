@@ -1,7 +1,7 @@
-# CONTEXT.md — Kairos (Multi-Store Edition)
+# CONTEXT.md — Swarm (Multi-Store Edition)
 
 > CSI TSEC 4.0 Hackathon, Problem Statement: **The Last Mile Problem**
-> **Kairos** = "the right moment" (Greek). Deciding when to commit, extend, or reject—not just which rider.
+> **Swarm**: Deciding when to commit, extend, or reject—not just which rider.
 
 ---
 
@@ -14,17 +14,17 @@
 - Actual delivery: 15–20 minutes (because Mumbai traffic, building elevator, customer not home)
 - Order is late. Rider blamed. System broken.
 
-**What Kairos does:**
+**What Swarm does:**
 - Accepts the reality: 2 km = 15–20 min minimum
-- 10-min delivery is **only feasible within ~1.2 km**
+- 10-min delivery is **only feasible within ~1.2 km** (straight-line, normal traffic; ~0.95 km at peak)
 - Beyond that: offer 20-min delivery (regular) or reject
 - Don't promise what you can't keep
 - Don't martyr riders with impossible SLAs
 
 **Multi-store difference:**
 - Not one store serving everyone
-- 5–6 dark stores spread across Mumbai, 2.5 km apart
-- Each store has its own rider pool (12–15 riders per store)
+- 15 dark stores spread across Mumbai, ~2.5 km apart (nearest-neighbour 2.2–3.6 km, avg ~2.6 km)
+- Each store has its own rider pool (6 riders per store, ~90 total)
 - When a customer orders, the system picks the **nearest viable store + most available rider**
 - If the nearest store is overloaded, send to the next-nearest
 - If all stores would miss the promise, extend the window upfront
@@ -33,13 +33,25 @@
 
 ## 2. The Setup (Chembur-Inspired, Realistic)
 
-**Dark Stores** (5–6 locations, 2.5 km apart):
-1. Andheri W (19.1364, 72.8296)
-2. Bandra W (19.0596, 72.8295)
-3. Powai (19.1176, 72.9060)
-4. Lower Parel (18.9953, 72.8300)
-5. Chembur (19.0449, 72.8842)
-6. Ghatkopar (19.0860, 72.9081)
+**Dark Stores** (15 locations, ~2.5 km apart). The 6 anchor stores are real neighbourhoods; the 9 fill-in stores are fabricated locations placed between them so the 3 km geofences leave no gaps:
+
+| # | Store | Lat, Lng | Type | Nearest store |
+|---|---|---|---|---|
+| 1 | Andheri W | 19.1364, 72.8296 | anchor | Andheri E (3.6 km) |
+| 2 | Bandra W | 19.0596, 72.8295 | anchor | Mahim (2.5 km) |
+| 3 | Powai | 19.1176, 72.9060 | anchor | Marol (3.4 km) |
+| 4 | Lower Parel | 18.9953, 72.8300 | anchor | Dadar (3.0 km) |
+| 5 | Chembur | 19.0449, 72.8842 | anchor | Sion (2.4 km) |
+| 6 | Ghatkopar | 19.0860, 72.9081 | anchor | Kurla (2.9 km) |
+| 7 | Dadar | 19.0190, 72.8430 | fill-in | Mahim (2.3 km) |
+| 8 | Mahim | 19.0400, 72.8410 | fill-in | Sion (2.2 km) |
+| 9 | Santacruz | 19.0810, 72.8370 | fill-in | Vile Parle (2.2 km) |
+| 10 | Vile Parle | 19.1000, 72.8440 | fill-in | Santacruz (2.2 km) |
+| 11 | Andheri E | 19.1190, 72.8580 | fill-in | Vile Parle (2.6 km) |
+| 12 | Sion | 19.0410, 72.8620 | fill-in | Mahim (2.2 km) |
+| 13 | BKC | 19.0640, 72.8640 | fill-in | Kurla (2.4 km) |
+| 14 | Kurla | 19.0726, 72.8845 | fill-in | BKC (2.4 km) |
+| 15 | Marol | 19.1000, 72.8800 | fill-in | Kurla (3.1 km) |
 
 **Per store:**
 - Inventory: 40 SKUs (uneven distribution, e.g., Chembur has more instant noodles, Bandra has premium brands)
@@ -47,13 +59,13 @@
 - Packing queue: visible, prioritized by urgency
 
 **Per store, rider pool:**
-- 12–15 gig riders
+- 6 gig riders (~90 across all stores)
 - Capacity: 3–4 orders per trip
 - Status: idle, en route, at store, delivering, returning, offline
 - Shift: 6 AM–11 PM (overlapping, busier during peaks)
 
 **Demand:**
-- 200–400 orders per peak hour, distributed across 6 stores
+- 200–400 orders per peak hour, distributed across 15 stores
 - Order density uneven by time and location
 - Example: 6–9 AM morning commute in business districts (Bandra, Lower Parel); 6–9 PM in residential (Andheri, Chembur)
 
@@ -64,19 +76,37 @@
 **The formula (no black-box routing):**
 
 ```
-distance_km = haversine(store, customer)  // straight line × 1.4 (road factor)
-base_eta_min = (distance_km / 6) * 60    // 6 km/h = realistic Mumbai speed
-traffic_multiplier = 1.0 (normal) → 1.3 (peak 8–11, 18–21) → 1.5 (monsoon)
-elevator_delay_sec = 0–60 (if high-rise)
+road_km      = haversine(store, customer) * 1.3   // 1.3 = road factor (streets aren't straight)
+base_eta_min = (road_km / 12) * 60                // 12 km/h = average door-to-door Mumbai bike speed
+traffic_multiplier = 1.0 (normal) | 1.3 (peak 8–11, 18–21)
+weather_multiplier = 1.0 (clear)  | 1.5 (monsoon)       // stacks: peak + monsoon = 1.95
+elevator_delay_sec = 0–60 (if high-rise; not known upfront, so not used for classification)
 
-total_eta_sec = (base_eta_min * 60 * traffic_multiplier) + elevator_delay_sec
+total_eta_sec = (base_eta_min * 60 * traffic_multiplier * weather_multiplier) + elevator_delay_sec
 ```
 
-**Examples (Chembur store):**
-- 0.5 km away → 5 min base, 6–7 min with traffic
-- 1 km away → 10 min base, 13 min with traffic
-- 2 km away → 20 min base, 26 min with traffic (matches your reality)
-- 2.5 km away → 25 min base, 33 min with traffic
+**Why 12 km/h and 1.3:** they are chosen so the express radius is exactly ~1.2 km.
+Express = 10 min total − 2 min packing = 8 min of riding. 1.2 km × 1.3 = 1.56 km of road; 1.56 km in 8 min = 11.7 km/h ≈ 12 km/h.
+
+**Examples (Chembur store, travel + 2 min packing):**
+
+| Straight-line | Road | Normal | Peak (×1.3) | Class (normal / peak) |
+|---|---|---|---|---|
+| 0.5 km | 0.65 km | 5.3 min | 6.2 min | express / express |
+| 1.0 km | 1.3 km | 8.5 min | 10.5 min | express / regular |
+| 1.2 km | 1.56 km | 9.8 min | 12.1 min | express / regular |
+| 2.0 km | 2.6 km | 15 min | 18.9 min | regular / regular (matches the 15–20 min reality) |
+| 2.5 km | 3.25 km | 18.3 min | 23.1 min | regular / infeasible |
+| 3.0 km | 3.9 km | 21.5 min | 27.4 min | infeasible / infeasible |
+
+**Resulting radii (straight-line from store):**
+
+| Condition | Express (≤10 min) | Regular (≤20 min) |
+|---|---|---|
+| Normal | 1.23 km | 2.77 km |
+| Peak (×1.3) | 0.95 km | 2.13 km |
+| Monsoon (×1.5) | 0.82 km | 1.85 km |
+| Peak + monsoon (×1.95) | 0.63 km | 1.42 km |
 
 ---
 
@@ -162,7 +192,7 @@ A rider leaves the store when:
 ### **USP 1: Packing Queue Intelligence**
 - Orders in queue are prioritized by slack (urgency) + zone (batching)
 - Packers batch by destination so nearby drops go together
-- Live metric: queue depth (Baseline explodes to 20+, Kairos stays at 5–8)
+- Live metric: queue depth (Baseline explodes to 20+, Swarm stays at 5–8)
 
 ### **USP 2: Multi-Rider Global Matching** (Per Store)
 - Don't assign orders one-by-one to riders
@@ -190,13 +220,13 @@ A rider leaves the store when:
 
 ## 7. Seed Data (Realistic)
 
-**6 dark stores** in Mumbai area, 2.5 km apart:
+**15 dark stores** in Mumbai area, ~2.5 km apart (6 anchors + 9 fill-ins, see §2):
 - Each has 40 SKUs
 - Inventory is uneven (some stores have surplus, others low)
 - Packing rate: 2 min per order
 
-**Rider pool per store:** 12–15 riders
-- Total: ~80 riders across all stores
+**Rider pool per store:** 6 riders
+- Total: ~90 riders across all stores
 - Shifts: overlapping (peak hours have more riders)
 - Capacity: 3–4 orders per trip
 
@@ -208,7 +238,7 @@ A rider leaves the store when:
 - 5% of orders are infeasible for express window
 
 **Disruptions** (on button press):
-- Monsoon: traffic multiplier 1.5×, ETAs jump 50%
+- Monsoon: weather multiplier 1.5×, ETAs jump 50%
 - Store offline: one store goes down, orders reroute
 - Rider offline: random rider goes down mid-trip
 - Power outage in zone: some customers unreachable
@@ -234,32 +264,32 @@ A rider leaves the store when:
 - Total orders delivered
 - Peak queue depth (across all stores)
 
-**Comparison:** Baseline vs Kairos side by side
+**Comparison:** Baseline vs Swarm side by side
 
 ---
 
 ## 9. The Demo (Web App, 90 seconds)
 
 ### **Setup:**
-- Map showing 6 stores + 80 riders + live orders
-- Baseline allocator (left side), Kairos allocator (right side)
+- Map showing 15 stores + ~90 riders + live orders
+- Baseline allocator (left side), Swarm allocator (right side)
 - Same seed, same orders, same disruptions
 
 ### **Flow:**
-1. **Normal evening:** Orders arrive, both worlds allocate. Kairos batches more, has lower queue.
+1. **Normal evening:** Orders arrive, both worlds allocate. Swarm batches more, has lower queue.
 2. **Customer places order 2 km away:**
    - Baseline: "10-min delivery!"
-   - Kairos: "This is a 20-min order. Accept?" (shows feasibility upfront)
+   - Swarm: "This is a 20-min order. Accept?" (shows feasibility upfront)
 3. **Press monsoon button:**
    - Both worlds' ETAs jump
    - Baseline: on-time rate drops from 95% → 80%
-   - Kairos: recalculates, extends promises, batches more, stays at 92%
+   - Swarm: recalculates, extends promises, batches more, stays at 92%
 4. **Press "store offline":**
    - Baseline: that store's orders pile up
-   - Kairos: immediately reroutes orders to nearest store, re-allocates riders
-5. **Final scoreboard:** Kairos wins on on-time %, on-at-risk count, queue depth, fairness
+   - Swarm: immediately reroutes orders to nearest store, re-allocates riders
+5. **Final scoreboard:** Swarm wins on on-time %, on-at-risk count, queue depth, fairness
 
-### **Key moment:** Click a late order in Baseline, then the same order in Kairos. Show the explainability: why Baseline sent a solo rider (greedy), why Kairos batched it (global matching).
+### **Key moment:** Click a late order in Baseline, then the same order in Swarm. Show the explainability: why Baseline sent a solo rider (greedy), why Swarm batched it (global matching).
 
 ---
 
@@ -271,7 +301,7 @@ A rider leaves the store when:
 │  SimClock ──tick──► World (multi-store state)                         │
 │      │              OrderGenerator (seeded Poisson, shared)           │
 │      │              BaselineAllocator (per store)                     │
-│      │              KairosAllocator (per store + global coordination) │
+│      │              SwarmAllocator (per store + global coordination) │
 │      └──► ScenarioEngine (monsoon, offline, surge, etc.)             │
 │                MetricsEngine (per-store + global metrics)             │
 │                emits: tick snapshots, events, decisions               │
@@ -280,11 +310,11 @@ A rider leaves the store when:
                            │ socket.io
 ┌──────────── Client (React + Vite, TypeScript) ──────────────────────┐
 │  Map (Leaflet + OpenStreetMap):                                       │
-│    - 6 store icons (colored by load)                                  │
+│    - 15 store icons (colored by load)                                 │
 │    - Rider dots (colored by store + status)                           │
 │    - Order dots (green=on-time, yellow=at-risk, red=late)            │
 │    - Rider routes (polylines, re-drawn on re-allocation)             │
-│  Split layout: Baseline | Kairos                                      │
+│  Split layout: Baseline | Swarm                                      │
 │  Metrics panel: per-store cards + global comparison                  │
 │  Scenario buttons + SimControls (play/pause/speed/seed)              │
 │  Order drawer → explainability (why this rider? why this store?)    │
@@ -312,7 +342,7 @@ A rider leaves the store when:
 
 All in `config.ts`:
 - `STORES` (locations, inventory)
-- `RIDERS_PER_STORE` (12–15)
+- `RIDERS_PER_STORE` (6)
 - `PACK_TIME_SEC` (120)
 - `CAPACITY_PER_TRIP` (3–4 orders)
 - `SLACK_THRESHOLD_EXPRESS` (60 sec)
@@ -321,7 +351,9 @@ All in `config.ts`:
 - `DEPOT_RETURN_THRESHOLD` (min slack to leave store = 120 sec)
 - `TRAFFIC_MULTIPLIER_PEAK` (1.3)
 - `TRAFFIC_MULTIPLIER_MONSOON` (1.5)
-- `BASE_SPEED_KMH` (6)
+- `BASE_SPEED_KMH` (12)
+- `ROAD_FACTOR` (1.3)
+- `EXPRESS_RADIUS_KM` (~1.2, derived from the above)
 
 ---
 
@@ -339,8 +371,8 @@ All in `config.ts`:
 At the end of 5 hours:
 - [ ] Multi-store setup working (orders routed to nearest viable store)
 - [ ] Baseline allocator working (greedy, no optimization)
-- [ ] Kairos allocator working (global matching, packing queue smarts)
+- [ ] Swarm allocator working (global matching, packing queue smarts)
 - [ ] Web UI shows both side by side, map visible, metrics live
 - [ ] At least 3 scenarios work (monsoon, store offline, surge)
-- [ ] Kairos visibly beats Baseline on on-time % and queue depth
+- [ ] Swarm visibly beats Baseline on on-time % and queue depth
 - [ ] Demo runs for 90 seconds without restart

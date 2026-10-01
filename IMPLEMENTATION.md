@@ -1,4 +1,4 @@
-# IMPLEMENTATION.md — Kairos (5-Hour Hackathon, 2-Person Team)
+# IMPLEMENTATION.md — Swarm (5-Hour Hackathon, 2-Person Team)
 
 > Read `CONTEXT.md` first. This file covers *who builds what, in what order, and the sync contract*.
 > **Platform:** Web app (Vite + React), not mobile.
@@ -9,9 +9,9 @@
 
 | | **Person A — Engine** | **Person B — Experience** |
 |---|---|---|
-| **Owns** | Simulator, allocators (baseline + Kairos), multi-store logic, disruptions, metrics | Web UI, map, metrics dashboard, controls, explainability, pitch deck |
+| **Owns** | Simulator, allocators (baseline + Swarm), multi-store logic, disruptions, metrics | Web UI, map, metrics dashboard, controls, explainability, pitch deck |
 | **Core skill** | Backend, algorithms, multi-store coordination | Frontend, UX, visualization |
-| **Deploys** | Server on `localhost:5000` | Client on `localhost:3000` (Vite dev server) |
+| **Deploys** | Server on `localhost:5000` | Client on `localhost:3000` (Vite dev server; port set in `vite.config.ts`, Vite's default is 5173) |
 
 **Golden Rule:** The socket contract (§2) is frozen at **hour 1**. Either person can add fields, but nobody renames or removes one without notifying the other.
 
@@ -20,7 +20,7 @@
 ## Repo Structure
 
 ```
-kairos/
+Swarm/
 ├── CONTEXT.md
 ├── IMPLEMENTATION.md
 ├── server/
@@ -29,8 +29,8 @@ kairos/
 │   │   ├── config.ts             # all constants (stores, speeds, etc.)
 │   │   ├── types.ts              # shared domain types (MUST match contract)
 │   │   ├── seed/
-│   │   │   ├── stores.ts         # 6 stores, inventory, packing queues
-│   │   │   └── riders.ts         # 12–15 riders per store (total ~80)
+│   │   │   ├── stores.ts         # 15 stores, inventory, packing queues
+│   │   │   └── riders.ts         # 6 riders per store (total ~90)
 │   │   ├── sim/
 │   │   │   ├── clock.ts          # tick loop, speed, pause/reset
 │   │   │   ├── world.ts          # World class: state + step()
@@ -40,7 +40,7 @@ kairos/
 │   │   │   └── store-select.ts   # geofence + select nearest viable store
 │   │   ├── alloc/
 │   │   │   ├── baseline.ts       # per-store greedy allocator
-│   │   │   ├── kairos.ts         # per-store smart allocator (global matching)
+│   │   │   ├── swarm.ts         # per-store smart allocator (global matching)
 │   │   │   ├── matching.ts       # bipartite matching / Hungarian
 │   │   │   ├── packing.ts        # queue re-ordering (priority + zone)
 │   │   │   └── feasibility.ts    # order class + ETA calc
@@ -83,7 +83,7 @@ socket.on('tick', (payload: TickPayload) => {
     
     worlds: {
       baseline: WorldSnapshot;
-      kairos: WorldSnapshot;
+      swarm: WorldSnapshot;
     }
   }
 })
@@ -180,7 +180,7 @@ socket.emit('scenario', { name: 'monsoon'|'store_offline'|'rider_offline'|'surge
 ```
 GET /api/decision/:world/:orderId  → DecisionRecord | 404
 GET /api/stores                    → StoreSnapshot[]
-GET /api/export                    → { baseline, kairos, timestamp }
+GET /api/export                    → { baseline, swarm, timestamp }
 ```
 
 ---
@@ -201,16 +201,16 @@ GET /api/export                    → { baseline, kairos, timestamp }
 
 **Person A:**
 - [ ] `travel.ts`: haversine, `travelTime(from, to, now)` with traffic multiplier
-- [ ] `seed/stores.ts`: 6 stores, locations, inventory (uneven)
-- [ ] `seed/riders.ts`: 12–15 riders per store (name, location, status)
+- [ ] `seed/stores.ts`: 15 stores (6 anchors + 9 fill-ins, see CONTEXT §2), locations, inventory (uneven)
+- [ ] `seed/riders.ts`: 6 riders per store (name, location, status)
 - [ ] `orderGenerator.ts`: seeded Poisson arrivals, zone-weighted distribution
 - [ ] `world.ts`: state machine, movement loop, delivery detection
 - [ ] `store-select.ts`: geofence (3 km), feasibility check, select nearest viable store
 - [ ] `feasibility.ts`: order class (express / regular / infeasible)
 
 **Person B:**
-- [ ] `MapView.tsx`: Leaflet map, 6 store icons, rider dots, order dots
-- [ ] Split layout: Baseline (left), Kairos (right), synced zoom/pan
+- [ ] `MapView.tsx`: Leaflet map, 15 store icons, rider dots, order dots
+- [ ] Split layout: Baseline (left), Swarm (right), synced zoom/pan
 - [ ] `SimControls.tsx`: play, pause, speed slider, seed input
 - [ ] Basic metric numbers (on-time %, queue depth) in text, not charts yet
 
@@ -224,9 +224,9 @@ GET /api/export                    → { baseline, kairos, timestamp }
 - [ ] `baseline.ts`: greedy per-store allocator (nearest store, nearest idle rider, solo trip)
 - [ ] `packing.ts`: queue re-ordering by slack + zone
 - [ ] `matching.ts`: bipartite matching (Hungarian or greedy-with-lookahead)
-- [ ] `kairos.ts`: smart allocator (store selection, global matching, drop re-ordering)
+- [ ] `swarm.ts`: smart allocator (store selection, global matching, drop re-ordering)
 - [ ] `scenarios.ts`: monsoon, store offline, rider offline, surge
-  - Monsoon: traffic_multiplier 1.5×
+  - Monsoon: weather multiplier 1.5× (stacks with peak traffic 1.3×)
   - Store offline: release orders, re-allocate to next-nearest
   - Rider offline: release orders, re-allocate
   - Surge: 3× order rate for 5 min
@@ -235,11 +235,11 @@ GET /api/export                    → { baseline, kairos, timestamp }
 **Person B:**
 - [ ] `MetricsPanel.tsx`: Recharts line charts (on-time %, queue depth over time)
 - [ ] Per-store metric cards (queue, utilization, fairness)
-- [ ] Global comparison: Baseline vs Kairos side-by-side numbers
+- [ ] Global comparison: Baseline vs Swarm side-by-side numbers
 - [ ] `OrderDrawer.tsx`: click order → show decision record (store options, rider options, reason)
 - [ ] `EventLog.tsx`: real-time event feed (order placed, assigned, delivered, late, etc.)
 
-**Checkpoint 3 (4h):** **CRITICAL QUALITY GATE.** Kairos must visibly beat Baseline on seed 42 in normal mode (no disruptions) on: on-time %, at-risk count, queue depth. If Kairos is not winning, A tunes `config.ts` before moving forward. **Do NOT proceed without this.**
+**Checkpoint 3 (4h):** **CRITICAL QUALITY GATE.** Swarm must visibly beat Baseline on seed 42 in normal mode (no disruptions) on: on-time %, at-risk count, queue depth. If Swarm is not winning, A tunes `config.ts` before moving forward. **Do NOT proceed without this.**
 
 ---
 
@@ -254,10 +254,10 @@ GET /api/export                    → { baseline, kairos, timestamp }
 **Person B:**
 - [ ] `ScenarioBar.tsx`: big buttons for each scenario + "clear" reset
 - [ ] Modal: final scoreboard (on-time %, at-risk, queue, fairness, orders delivered)
-- [ ] "Baseline vs Kairos" headline metric
+- [ ] "Baseline vs Swarm" headline metric
 - [ ] Pitch deck (6 slides: problem, insight, algorithm, demo, results, future work)
 
-**Checkpoint 4 (5h):** Demo script (§14 in CONTEXT.md) runs end-to-end without restart. Pitch deck ready. Code is clean enough to explain.
+**Checkpoint 4 (5h):** Demo script (§9 in CONTEXT.md) runs end-to-end without restart. Pitch deck ready. Code is clean enough to explain.
 
 ---
 
@@ -268,7 +268,7 @@ GET /api/export                    → { baseline, kairos, timestamp }
 3. Scenario: surge, stockout (keep monsoon + offline)
 4. Event log (keep scenario buttons)
 5. Explainability drawer
-6. **Never cut:** multi-store logic, Kairos vs Baseline comparison, side-by-side map, on-time % metric
+6. **Never cut:** multi-store logic, Swarm vs Baseline comparison, side-by-side map, on-time % metric
 
 ---
 
@@ -286,9 +286,9 @@ GET /api/export                    → { baseline, kairos, timestamp }
 - **"Why multi-store instead of one?"** Real quick-commerce operates with multiple fulfillment centers. One store doesn't show routing complexity or the geo-selection problem.
 - **"How do you handle store inventory?"** Geofence first (which stores are close?), then check stock (which can fulfill this order?). We show it in DecisionRecord.
 - **"Why not use Google Maps API?"** Consistency across both worlds, no latency, and it's a hackathon (WiFi may fail). Pre-computed distance matrix is more reliable.
-- **"Isn't 6 km/h too slow?"** Go for a walk in Mumbai during peak hour; you'll see. We're using real Chembur data.
-- **"Why extend the promise window instead of assigning a solo rider?"** Because a solo rider at 2.5 km away would still take 25+ minutes. We'd be lying to the customer either way. Better to extend upfront.
-- **"How does Kairos beat Baseline?"** Kairos batches intelligently, respects feasibility, and re-optimizes on disruptions. Baseline is greedy and brittle.
+- **"Isn't 12 km/h too slow?"** It's door-to-door average, not cruising speed: signals, lanes, parking, finding the building. At peak it drops to ~9 km/h effective. It's also what makes the ~1.2 km express radius honest.
+- **"Why extend the promise window instead of assigning a solo rider?"** Because a solo rider 2.5 km away still takes ~23 minutes at peak. We'd be lying to the customer either way. Better to extend upfront.
+- **"How does Swarm beat Baseline?"** Swarm batches intelligently, respects feasibility, and re-optimizes on disruptions. Baseline is greedy and brittle.
 
 ---
 
@@ -296,9 +296,9 @@ GET /api/export                    → { baseline, kairos, timestamp }
 
 - [ ] Multi-store routing working (customers assigned to nearest viable store)
 - [ ] Baseline allocator working and visible on map
-- [ ] Kairos allocator visibly batching and beating Baseline
+- [ ] Swarm allocator visibly batching and beating Baseline
 - [ ] Web UI: side-by-side map, metrics, scenario buttons
-- [ ] At least monsoon scenario works (and Kairos adapts)
+- [ ] At least monsoon scenario works (and Swarm adapts)
 - [ ] Demo runs for 90 seconds without crash
 - [ ] Pitch deck ready
 - [ ] Code is explainable (comments on complex logic)
@@ -327,7 +327,7 @@ cd client && npm install && npm run dev     # localhost:3000
 
 **For venue WiFi issues:**
 - Both run on localhost, so no internet needed
-- Map tiles: pre-cache the Chembur area with `mapbox-offline` or similar (nice-to-have, not critical)
+- Map tiles: OSM tiles need internet. Pre-cache **before** the event while online (open the demo once and pan/zoom over all 15 stores so the browser caches the tiles), or use an offline tile package (nice-to-have, not critical)
 - If WiFi still fails: tile fallback is gray, but data still works
 
 ---
