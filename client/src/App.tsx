@@ -10,6 +10,7 @@ import { MetricsPanel } from './components/MetricsPanel';
 import { OrderDrawer } from './components/OrderDrawer';
 import { EventLog } from './components/EventLog';
 import { FinalScoreboardModal } from './components/FinalScoreboardModal';
+import { PitchDeckModal } from './components/PitchDeckModal';
 
 const App: React.FC = () => {
   const [tickData, setTickData] = useState<TickPayload>(getMockTickPayload());
@@ -18,6 +19,7 @@ const App: React.FC = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedWorld, setSelectedWorld] = useState<'baseline' | 'swarm'>('swarm');
   const [scoreboardOpen, setScoreboardOpen] = useState<boolean>(false);
+  const [pitchDeckOpen, setPitchDeckOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const onConnect = () => setConnected(true);
@@ -76,6 +78,7 @@ const App: React.FC = () => {
         activeScenario={tickData.activeScenario}
         weatherMult={tickData.weatherMult}
         onOpenScoreboard={() => setScoreboardOpen(true)}
+        onOpenPitchDeck={() => setPitchDeckOpen(true)}
       />
 
       <main className="flex-1 max-w-[1700px] w-full mx-auto p-4 space-y-4">
@@ -132,8 +135,14 @@ const App: React.FC = () => {
         swarmMetrics={tickData.worlds.swarm.metrics}
         naiveMetrics={tickData.worlds.naive?.metrics}
       />
+
+      <PitchDeckModal
+        isOpen={pitchDeckOpen}
+        onClose={() => setPitchDeckOpen(false)}
+      />
     </div>
   );
 };
 
 export default App;
+

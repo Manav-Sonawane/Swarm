@@ -243,10 +243,10 @@ The prototype import already covers the old "foundation" and "moving riders" pha
 - [x] `BUGS.md` P1 #7–#9 (cross-store batch, erased route, stale ETA)
 
 **Person B:**
-- [ ] `SetupPanel.tsx`: riders/store, demand, packing slots, traffic, seed → `control: reset` with `setup`
-- [ ] Live operations: Baseline | Swarm maps with synced zoom/pan, order colours by class + risk, routes
-- [ ] Assignment table: order, store, rider, ETA vs promise, batched with
-- [ ] Headline metrics: on-time %, P90/max lateness, failed, decision ms
+- [x] `SetupPanel.tsx`: riders/store, demand, packing slots, traffic, seed → `control: reset` with `setup`
+- [x] Live operations: Baseline | Swarm maps with synced zoom/pan, order colours by class + risk, routes
+- [x] Assignment table: order, store, rider, ETA vs promise, batched with
+- [x] Headline metrics: on-time %, P90/max lateness, failed, decision ms
 
 **Checkpoint 2 (2.5h):** On seed 42, normal mode, Swarm on-time % ≥ Baseline; decision time visible and < 200 ms. Check with `cd server && npm run bench` (headless, all three worlds; add events like `-- 60 "20:monsoon"`).
 
@@ -264,9 +264,9 @@ The prototype import already covers the old "foundation" and "moving riders" pha
 - [x] `metrics.ts`: lateness P90/max, failed, km total/per order, orders per zone, by class (on-time % and lateness count every *decided* order, incl. undelivered ones past their promise)
 
 **Person B:**
-- [ ] `ResultsView.tsx`: Naive vs Baseline vs Swarm table (reliability first) + on-time and lateness charts
-- [ ] `OrderDrawer.tsx`: store options, options removed by the deadline filter, batch saving, decision ms
-- [ ] `EventLog.tsx`: placed, assigned, batched, reassigned, at-risk, delivered late
+- [x] `ResultsView.tsx`: Naive vs Baseline vs Swarm table (reliability first) + on-time and lateness charts
+- [x] `OrderDrawer.tsx`: store options, options removed by the deadline filter, batch saving, decision ms
+- [x] `EventLog.tsx`: placed, assigned, batched, reassigned, at-risk, delivered late
 
 **Checkpoint 3 (4h):** **CRITICAL QUALITY GATE.** Normal + monsoon: Swarm beats **both** baselines on on-time % and worst-case lateness; max decision time < 200 ms. If not, A tunes `config.ts` before moving on. **Do NOT proceed without this.**
 
@@ -282,9 +282,9 @@ The prototype import already covers the old "foundation" and "moving riders" pha
 - [ ] `BUGS.md` P2; `/api/export` with all three worlds
 
 **Person B:**
-- [ ] `ScenarioBar.tsx` final buttons + "clear"
-- [ ] Final scoreboard / results polish
-- [ ] Pitch deck (6 slides: problem, the coupled decision, algorithm, demo, results incl. decision time, future work)
+- [x] `ScenarioBar.tsx` final buttons + "clear" (Monsoon, IPL Spike, Store Offline, Riders Offline, Stockout, Cancel Burst, Clear All)
+- [x] Final scoreboard / results polish (3-way ResultsView modal with summary tabs, charts, breakdown, winner highlights)
+- [x] Pitch deck (6 interactive slides: problem, the coupled decision, algorithm architecture, live digital twin, empirical results with <15ms latency, future roadmap + judge notes toggle)
 
 **Checkpoint 4 (5h):** Demo script (§9 in CONTEXT.md) runs end-to-end without restart. Pitch deck ready. Code is clean enough to explain.
 
