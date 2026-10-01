@@ -10,7 +10,8 @@
 - **Core deliverable:** the dynamic allocation + routing algorithm (Requirement 3 calls it "the core challenge").
 - **Supporting prototype:** just enough simulation and UI to feed it orders, riders, stores, inventory and disruptions, and to *show* its decisions. An algorithm alone (a function or notebook) would under-deliver.
 - **Not required:** a customer e-commerce site (login, payments, product browsing, checkout).
-- **The decision is coupled:** order → dark store → rider → position in the rider's route. The nearest rider may belong to a store without stock; the nearest store may have a packing queue; the shortest route may overload one rider while another could batch the order. All four are chosen together.
+- **Zepto/Blinkit model:** the customer's nearest dark store serves them, and the app only offers what that store has in stock (out-of-stock items simply show as unavailable). So there is no cross-store fulfilment, no store hopping and no riders sent to far-off stores just to fetch an item. The store is fixed by the address.
+- **The decision is coupled:** for each order, *which rider* and *where in that rider's route*, together with that store's packing queue and the rider's other drops. The nearest rider may be on a trip that a new order would make late; the shortest route may overload one rider while another could batch the order. All of it is chosen together.
 - **Effort split:** ~60% algorithm + simulation, ~25% visualization + dashboard, ~15% data flow. When cutting, protect the algorithm and the comparison first.
 
 **Three screens:**
@@ -39,10 +40,9 @@
 **Multi-store difference:**
 - Not one store serving everyone
 - 15 dark stores spread across Mumbai, ~2.5 km apart (nearest-neighbour 2.2–3.6 km, avg ~2.6 km)
-- Each store has its own rider pool (6 riders per store, ~90 total). The comparison worlds keep strict pools; **Swarm may pool**: a rider can pick up at any online store within `SWARM_BORROW_KM` (3.5 km) of its home store, and rests at the nearest such store between trips
-- When a customer orders, the system picks the **nearest viable store + most available rider**
-- If the nearest store is overloaded, send to the next-nearest
-- If all stores would miss the promise, extend the window upfront
+- Each store has its own rider pool (6 riders per store, ~90 total). A rider belongs to exactly one dark store and only picks up there
+- When a customer orders, they are served by their **nearest online dark store** (inside the 3 km service radius; otherwise the address is "outside the service area"), and the system picks the **best rider from that store's pool**
+- If a store goes offline, its not-yet-picked orders are re-served from the next-nearest store that has every item (otherwise they fail), and its riders join the nearest online store until it is back
 
 ---
 
@@ -69,7 +69,7 @@
 | 15 | Marol | 19.1000, 72.8800 | fill-in | Kurla (3.1 km) |
 
 **Per store:**
-- Inventory: 40 SKUs (uneven distribution, e.g., Chembur has more instant noodles, Bandra has premium brands)
+- Inventory: 40 SKUs, uneven by store. An out-of-stock item is simply not offered in that store's app: it can never be in a cart, so stock never causes a failed delivery or a trip to another store. One shared catalog serves all three worlds, so they see the same orders
 - Packing capacity: 2–3 orders simultaneously (~2 min per order)
 - Packing queue: visible, prioritized by urgency
 
@@ -129,25 +129,18 @@ Express = 10 min total − 2 min packing = 8 min of riding. 1.2 km × 1.3 = 1.56
 
 **When order arrives at (lat, lng):**
 
-1. **Geofence:** Find all stores within 3 km
-2. **For each candidate store:**
+1. **Serving store:** the nearest *online* dark store within the 3 km service radius. None → rejected ("outside the service area"). The cart is built from that store's in-stock items, and the items are reserved at checkout.
+2. **Classify from that store:**
    ```
-   store_eta = calculate_eta(store, customer)
+   store_eta = calculate_eta(serving_store, customer)
    pack_time = 2 min
    total_time = store_eta + pack_time
-   
+
    if total_time <= 10 min → "express" (promise 10 min, green)
    else if total_time <= 20 min → "regular" (promise 20 min, yellow)
-   else → "infeasible" (red, offer extended or reject)
+   else → "infeasible" (red: extended 30 min window)
    ```
-3. **Select store:** Pick the store with:
-   - Shortest feasible ETA, OR
-   - If tied, lowest packing queue depth, OR
-   - If tied, highest active rider count
-4. **Handle infeasible orders:**
-   - Option A: Reject ("outside service area")
-   - Option B: Offer extended (20–30 min) and let customer choose
-   - Option C: Add to waitlist for next-generation inventory (future)
+3. **Handle infeasible orders:** quote the extended window (30 min) upfront rather than promising what can't be kept.
 
 **Key:** Honesty upfront beats apologies later.
 
@@ -169,12 +162,12 @@ ETA = packing delay       (orders ahead in queue / packing slots × pack time + 
     + delivery travel     (store → drops in sequence, up to this order)
     + expected disruption (traffic × weather multipliers, §3)
 ```
-**Feasibility uses a risk-padded ETA:** travel legs × `ETA_RISK_PAD` (1.05). Riders still move at the expected speed; the pad is a small safety margin. (It was 1.15; the simulator has no random travel noise, so a larger pad only shrank the feasible set and cost ~2 pts of on-time. New orders are *classified* with a separate fixed `CLASSIFY_PAD` of 1.15 so every world gets the same promise.) Packing delay counts as much as distance: a store 500 m away with a 6-min queue loses to one 2 km away that can dispatch now.
+**Feasibility uses a risk-padded ETA:** travel legs × `ETA_RISK_PAD` (1.05). Riders still move at the expected speed; the pad is a small safety margin. (It was 1.15; the simulator has no random travel noise, so a larger pad only shrank the feasible set and cost ~2 pts of on-time. New orders are *classified* with a separate fixed `CLASSIFY_PAD` of 1.15 so every world gets the same promise.) Packing delay counts as much as riding: it is part of every order's ETA, and Swarm packs the most urgent trips first.
 
 ### Steps
-1. **Candidate stores:** within the 3 km geofence and holding stock for every item. Keep the best `CANDIDATE_STORES` (3) by packing delay + travel.
-2. **Candidate riders:** not offline, below capacity, not yet departed, and allowed to serve that store (home store, or within the pooling radius). Any orders they already hold must be from the same store.
-3. **Insertion:** for each (store, rider) pair, insert the order into the rider's trip and try every drop sequence (≤4 drops → ≤24 permutations).
+1. **Store:** fixed: the order's serving store (nearest online dark store, items in stock by construction). Its packing queue gives the packing delay.
+2. **Candidate riders:** that store's riders who are not offline, below capacity and not yet departed. Any orders they already hold are from the same store.
+3. **Insertion:** for each candidate rider, insert the order into the rider's trip and try every drop sequence (≤4 drops → ≤24 permutations).
 4. **Hard deadline filter:** discard any option where **any** order on the trip, new or existing, misses its promise under the padded ETA. Deadlines are constraints, not score weights; otherwise a cheap but already-late option can win.
 5. **Score the feasible options:** `cost = customer wait + delay imposed on orders already on the trip + W_LOAD × load + W_FAIR × (deliveries above the fleet average) + W_RIDE × rider time consumed`; ties go to the option with more minimum slack. "Rider time" is the marginal ride legs plus the leg back to the store: riders, not packing, are the bottleneck under load, so batching and nearby riders are preferred. A batch is only possible here if every affected order stays feasible.
 6. **Assignment order (triage):** orders that can still be on time go first, most urgent first and then highest *regret* (2nd-best cost − best cost), so scarce riders go to orders with the fewest alternatives; orders that cannot be saved get the leftover riders. Rider state is updated after each assignment before the next order is evaluated.
@@ -196,8 +189,8 @@ Within a store, pack by slack (most urgent first), then group by zone so orders 
 ### Comparison allocators (same orders, same disruptions)
 | Allocator | Rule |
 |---|---|
-| **Naive** | Nearest available rider to the customer; the order is packed at that rider's home store. Ignores stock and packing queue: a missing item = failed delivery. Solo trips. |
-| **Baseline** | Nearest *stocked* store + nearest free rider, FIFO, solo trips. |
+| **Naive** | The nearest free rider to the customer from *any* store's pool (pools ignored); the rider first rides to the serving store. Solo trips, FIFO. |
+| **Baseline** | The serving store + that store's nearest free rider, FIFO, solo trips. If every rider of the store is busy, the order waits. |
 
 All three get the **same promise** per order by default (classified once on the shared stream), so the comparison measures allocation, not promise-setting. `BASELINE_PROMISES_10_MIN=true` makes Naive + Baseline promise 10 min to everyone, for the over-promising contrast in §9.
 | **Swarm** | The algorithm above. |
@@ -213,12 +206,12 @@ All three get the **same promise** per order by default (classified once on the 
 - **Why:** Judges see product thinking. You're not blaming riders; you're being honest with customers.
 
 ### **USP 1: Coupled Decision with Hard Deadlines**
-- Store, rider and drop sequence are chosen together (§5), not one after another
+- Rider and drop sequence are chosen together (§5), with the store's packing queue, not one after another
 - Infeasible options are removed *before* scoring, so a cheap-but-late option can never win
 - Batches only form when every order on the trip stays on time
 
 ### **USP 2: Packing-Aware Routing**
-- Packing delay is part of every ETA, so a busy nearby store can lose to a free farther one
+- Packing delay is part of every ETA, and each store packs its most urgent trips first
 - Live metric: packing queue depth per store
 - Stretch: pack in slack + zone order (§5)
 
@@ -245,7 +238,7 @@ All three get the **same promise** per order by default (classified once on the 
 
 **15 dark stores** in Mumbai area, ~2.5 km apart (6 anchors + 9 fill-ins, see §2):
 - Each has 40 SKUs
-- Inventory is uneven (some stores have surplus, others low)
+- Inventory is uneven (some stores have surplus, others low); out-of-stock items are never offered
 - Packing rate: 2 min per order
 
 **Rider pool per store:** 6 riders
@@ -258,7 +251,7 @@ All three get the **same promise** per order by default (classified once on the 
 - Spatially distributed: weighted by zone population; customers are kept on land (`seed/land.ts` outline of the service area)
 - Item mix varies by store and time
 - Some orders are express, some regular
-- 5% of orders are infeasible for express window
+- About 24% of orders are express (the serving store is within ~1 km), most of the rest regular, ~10% get the extended window
 
 **Disruptions** (on button press):
 - Monsoon: weather multiplier 1.5×, ETAs jump 50%
@@ -374,14 +367,11 @@ On-time % and lateness are computed over every **decided** order: delivered, fai
 All in `config.ts`:
 - `STORES` (locations, inventory)
 - `RIDERS_PER_STORE` (6)
-- `RIDER_BORROW_KM` (0 = comparison worlds: riders pick up only at their home store)
-- `SWARM_BORROW_KM` (3.5) / `SWARM_REPOSITION` (true) — Swarm-only rider pooling
 - `W_RIDE` (0.75) / `W_FAIR` (600) / `SAVABLE_FIRST` (true) — cost terms and triage, see §5
-- `ORDERS_PER_HOUR` (300; spike = 3×. Calibrated so Baseline isn't saturated: ~66–80% on time)
+- `ORDERS_PER_HOUR` (255; spike = 3×. Every order is accepted now, so this is the real order rate. Calibrated so Baseline isn't saturated: ~77% on time in steady conditions)
 - `PACK_TIME_SEC` (120)
 - `CAPACITY_PER_TRIP` (3–4 orders)
-- `GEOFENCE_KM` (3)
-- `CANDIDATE_STORES` (3)
+- `GEOFENCE_KM` (3): service radius around a dark store
 - `EPOCH_SEC` (10)
 - `REBALANCE_SEC` (60)
 - `FREEZE_DIST_KM` (0.3)
@@ -416,9 +406,9 @@ All in `config.ts`:
 ## 14. Success Criteria
 
 At the end of 5 hours:
-- [ ] Multi-store setup working (orders routed to nearest viable store, stock checked)
+- [ ] Multi-store setup working (each order served by its nearest online dark store; carts only contain in-stock items)
 - [ ] Naive and Baseline allocators working as comparisons
-- [ ] Swarm allocator working (coupled store + rider + route, hard deadlines, freeze-window rebalance)
+- [ ] Swarm allocator working (rider + route chosen together, hard deadlines, freeze-window rebalance)
 - [ ] Three screens: Setup, Live operations (side-by-side maps), Results
 - [ ] At least 3 scenarios work (monsoon, store offline, surge)
 - [ ] Swarm beats both baselines on on-time % and worst-case lateness

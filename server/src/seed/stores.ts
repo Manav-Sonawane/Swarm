@@ -1,7 +1,7 @@
 import { DarkStore } from '../types';
 import { CONFIG } from '../config';
 
-const SKUS = [
+export const SKUS = [
   'SKU-MILK-1L',
   'SKU-BREAD-WHITE',
   'SKU-EGGS-6P',
@@ -44,45 +44,49 @@ const SKUS = [
   'SKU-NUTS-200G'
 ];
 
+// 6 anchor stores + 9 fabricated fill-ins, ~2.5 km apart (see CONTEXT.md §2)
+const STORE_DEFS = [
+  { id: 'store-andheri', name: 'Andheri West Dark Store', loc: { lat: 19.1364, lng: 72.8296 } },
+  { id: 'store-bandra', name: 'Bandra West Dark Store', loc: { lat: 19.0596, lng: 72.8295 } },
+  { id: 'store-powai', name: 'Powai Dark Store', loc: { lat: 19.1176, lng: 72.9060 } },
+  { id: 'store-parel', name: 'Lower Parel Dark Store', loc: { lat: 18.9953, lng: 72.8300 } },
+  { id: 'store-chembur', name: 'Chembur Dark Store', loc: { lat: 19.0449, lng: 72.8842 } },
+  { id: 'store-ghatkopar', name: 'Ghatkopar Dark Store', loc: { lat: 19.0860, lng: 72.9081 } },
+  { id: 'store-dadar', name: 'Dadar Dark Store', loc: { lat: 19.0190, lng: 72.8430 } },
+  { id: 'store-mahim', name: 'Mahim Dark Store', loc: { lat: 19.0400, lng: 72.8410 } },
+  { id: 'store-santacruz', name: 'Santacruz Dark Store', loc: { lat: 19.0810, lng: 72.8370 } },
+  { id: 'store-vileparle', name: 'Vile Parle Dark Store', loc: { lat: 19.1000, lng: 72.8440 } },
+  { id: 'store-andheri-e', name: 'Andheri East Dark Store', loc: { lat: 19.1190, lng: 72.8580 } },
+  { id: 'store-sion', name: 'Sion Dark Store', loc: { lat: 19.0410, lng: 72.8620 } },
+  { id: 'store-bkc', name: 'BKC Dark Store', loc: { lat: 19.0640, lng: 72.8640 } },
+  { id: 'store-kurla', name: 'Kurla Dark Store', loc: { lat: 19.0726, lng: 72.8845 } },
+  { id: 'store-marol', name: 'Marol Dark Store', loc: { lat: 19.1000, lng: 72.8800 } },
+];
+
 export function generateSeedStores(): DarkStore[] {
-  // 6 anchor stores + 9 fabricated fill-ins, ~2.5 km apart (see CONTEXT.md §2)
-  const storeDefs = [
-    { id: 'store-andheri', name: 'Andheri West Dark Store', loc: { lat: 19.1364, lng: 72.8296 } },
-    { id: 'store-bandra', name: 'Bandra West Dark Store', loc: { lat: 19.0596, lng: 72.8295 } },
-    { id: 'store-powai', name: 'Powai Dark Store', loc: { lat: 19.1176, lng: 72.9060 } },
-    { id: 'store-parel', name: 'Lower Parel Dark Store', loc: { lat: 18.9953, lng: 72.8300 } },
-    { id: 'store-chembur', name: 'Chembur Dark Store', loc: { lat: 19.0449, lng: 72.8842 } },
-    { id: 'store-ghatkopar', name: 'Ghatkopar Dark Store', loc: { lat: 19.0860, lng: 72.9081 } },
-    { id: 'store-dadar', name: 'Dadar Dark Store', loc: { lat: 19.0190, lng: 72.8430 } },
-    { id: 'store-mahim', name: 'Mahim Dark Store', loc: { lat: 19.0400, lng: 72.8410 } },
-    { id: 'store-santacruz', name: 'Santacruz Dark Store', loc: { lat: 19.0810, lng: 72.8370 } },
-    { id: 'store-vileparle', name: 'Vile Parle Dark Store', loc: { lat: 19.1000, lng: 72.8440 } },
-    { id: 'store-andheri-e', name: 'Andheri East Dark Store', loc: { lat: 19.1190, lng: 72.8580 } },
-    { id: 'store-sion', name: 'Sion Dark Store', loc: { lat: 19.0410, lng: 72.8620 } },
-    { id: 'store-bkc', name: 'BKC Dark Store', loc: { lat: 19.0640, lng: 72.8640 } },
-    { id: 'store-kurla', name: 'Kurla Dark Store', loc: { lat: 19.0726, lng: 72.8845 } },
-    { id: 'store-marol', name: 'Marol Dark Store', loc: { lat: 19.1000, lng: 72.8800 } },
-  ];
+  return STORE_DEFS.map(def => ({
+    id: def.id,
+    name: def.name,
+    loc: def.loc,
+    packingSlots: CONFIG.PACKING_SLOTS,
+    packQueue: [],
+    packTimeSec: CONFIG.AVG_PACK_TIME_SEC,
+  }));
+}
 
-  return storeDefs.map((def, idx) => {
-    const inventory: Record<string, number> = {};
+/**
+ * Shared catalog: storeId -> sku -> quantity on the shelf. Owned by the order stream (not by a world),
+ * so every world sees the same orders. Uneven by store; about 1 SKU in 7 starts out of stock at a store
+ * (customers simply can't add it to their cart).
+ */
+export function generateSeedInventory(): Record<string, Record<string, number>> {
+  const catalog: Record<string, Record<string, number>> = {};
+  STORE_DEFS.forEach((def, idx) => {
+    const inv: Record<string, number> = {};
     SKUS.forEach((sku, sIdx) => {
-      // Create slightly uneven inventory patterns across stores
-      if ((sIdx + idx) % 7 === 0) {
-        inventory[sku] = 0; // occasional stockout item in seed
-      } else {
-        inventory[sku] = 50 + ((sIdx * 13 + idx * 17) % 80);
-      }
+      inv[sku] = (sIdx + idx) % 7 === 0 ? 0 : 50 + ((sIdx * 13 + idx * 17) % 80);
     });
-
-    return {
-      id: def.id,
-      name: def.name,
-      loc: def.loc,
-      inventory,
-      packingSlots: 2,
-      packQueue: [],
-      packTimeSec: CONFIG.AVG_PACK_TIME_SEC,
-    };
+    catalog[def.id] = inv;
   });
+  return catalog;
 }

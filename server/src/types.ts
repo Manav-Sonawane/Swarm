@@ -6,7 +6,6 @@ export interface DarkStore {
   id: string;
   name: string;
   loc: LatLng;
-  inventory: Record<string, number>; // sku -> qty
   packingSlots: number;
   packQueue: string[]; // orderIds waiting to be packed or currently packing (FIFO)
   packTimeSec: number;
@@ -106,7 +105,8 @@ export interface Order {
   packStartedAt?: number;
   decision?: DecisionRecord;
   holdUntil?: number; // for delayed commitment
-  zoneId?: string;
+  zoneId?: string; // = serving store (order density per zone)
+  servingStoreId?: string; // the customer's nearest online dark store; the cart only offers what it has in stock
   failReason?: string;
 }
 

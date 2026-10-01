@@ -131,44 +131,36 @@ export function permutations<T>(arr: T[]): T[][] {
 // Order classification (USP 0: feasibility honesty)
 // ---------------------------------------------------------------------------
 
-/** Store pools: a rider picks up only at its home store (or nearby stores if RIDER_BORROW_KM > 0). */
-export function canServe(rider: Rider, store: DarkStore, stores: DarkStore[], borrowKm: number = CONFIG.RIDER_BORROW_KM): boolean {
-  if (store.offline) return false;
-  if (rider.homeStoreId === store.id) return true;
-  if (borrowKm <= 0) return false;
-  const home = stores.find(s => s.id === rider.homeStoreId);
-  return !!home && haversineKm(home.loc, store.loc) <= borrowKm;
-}
-
-export function hasStock(store: DarkStore, order: Order): boolean {
-  return order.items.every(it => (store.inventory[it.sku] ?? 0) >= it.qty);
+/** Store pools: a rider picks up only at its own dark store (riders of an offline store are re-homed). */
+export function canServe(rider: Rider, store: DarkStore): boolean {
+  return !store.offline && rider.homeStoreId === store.id;
 }
 
 /**
- * Classifies a new order from the nominal ETA of the best stocked store inside the geofence:
- * travel (risk-padded) + one pack time. Sets class, priority and promisedBy, or rejects the order.
- * Runs once on the shared order stream so every world gets the same promise.
+ * Classifies a new order from its serving store (the nearest online dark store, fixed at checkout):
+ * travel (padded with CLASSIFY_PAD) + one pack time. Sets class, priority and promisedBy. Orders from outside
+ * the service area were already rejected by the order stream. Runs once on the shared stream, so every
+ * world gets the same promise.
  */
 export function classifyOrder(order: Order, stores: DarkStore[], now: number, weatherMult: number): void {
-  let bestSec = Infinity;
-  for (const s of stores) {
-    if (s.offline || haversineKm(s.loc, order.loc) > CONFIG.GEOFENCE_KM || !hasStock(s, order)) continue;
-    const sec = travelTimeSec(s.loc, order.loc, now, weatherMult) * CONFIG.CLASSIFY_PAD + s.packTimeSec;
-    if (sec < bestSec) bestSec = sec;
-  }
-
-  let cls: OrderClass;
-  let windowSec: number;
-  if (bestSec === Infinity) {
+  if (order.status === 'rejected') return;
+  const store = stores.find(s => s.id === order.servingStoreId);
+  if (!store) {
     order.class = 'infeasible';
     order.priority = 'regular';
     order.status = 'rejected';
     order.promisedBy = order.createdAt;
+    order.failReason = 'outside the service area';
     return;
-  } else if (bestSec <= CONFIG.EXPRESS_PROMISED_SEC) {
+  }
+  const sec = travelTimeSec(store.loc, order.loc, now, weatherMult) * CONFIG.CLASSIFY_PAD + store.packTimeSec;
+
+  let cls: OrderClass;
+  let windowSec: number;
+  if (sec <= CONFIG.EXPRESS_PROMISED_SEC) {
     cls = 'express';
     windowSec = CONFIG.EXPRESS_PROMISED_SEC;
-  } else if (bestSec <= CONFIG.REGULAR_PROMISED_SEC) {
+  } else if (sec <= CONFIG.REGULAR_PROMISED_SEC) {
     cls = 'regular';
     windowSec = CONFIG.REGULAR_PROMISED_SEC;
   } else {

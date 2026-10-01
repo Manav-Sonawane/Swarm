@@ -70,15 +70,18 @@ export class ScenarioEngine {
         if (online.length <= 1) break;
         const storeId = online[Math.floor(this.rng() * online.length)];
         this.offlineStoreIds.push(storeId);
-        let released = 0;
+        let rerouted = 0;
+        let failed = 0;
         let lent = 0;
         for (const world of worlds) {
-          const r = world.setStoreOffline(storeId);
-          released += r.released;
+          // Orders move to the next-nearest online store only if the shared catalog says it has every item
+          const r = world.setStoreOffline(storeId, nowSimTime, (store, order) => orderGen.hasStockAt(store.id, order));
+          rerouted += r.rerouted;
+          failed += r.failed;
           lent = r.lentRiders;
         }
         const name = worlds[0].stores.find(st => st.id === storeId)!.name;
-        ev('SCENARIO_STORE_OFFLINE', `🏚️ ${name} went offline. ${released} unpicked order(s) re-routed across worlds; its ${lent} riders join the nearest store.`);
+        ev('SCENARIO_STORE_OFFLINE', `🏚️ ${name} went offline. ${rerouted} unpicked order(s) re-served from the next-nearest store across worlds, ${failed} failed (items unavailable nearby); its ${lent} riders join the nearest store.`);
         break;
       }
       case 'spike': {
@@ -124,12 +127,12 @@ export class ScenarioEngine {
         break;
       }
       case 'stockout': {
+        // Shows as "out of stock" in the app: new carts at this store can't include these items. Orders already
+        // placed had their items reserved at checkout, so nothing already promised is affected.
         const top5Skus = ['SKU-MILK-1L', 'SKU-BREAD-WHITE', 'SKU-EGGS-6P', 'SKU-BANANA-1KG', 'SKU-MAGGI-4P'];
-        for (const world of worlds) {
-          const targetStore = world.stores[0]; // Andheri West
-          top5Skus.forEach(sku => (targetStore.inventory[sku] = 0));
-        }
-        ev('SCENARIO_STOCKOUT', `📦 Major Stockout at ${worlds[0].stores[0].name}! Top 5 SKUs dropped to 0 stock.`);
+        const target = worlds[0].stores[0]; // Andheri West
+        orderGen.setOutOfStock(target.id, top5Skus);
+        ev('SCENARIO_STOCKOUT', `📦 Stock-out at ${target.name}: milk, bread, eggs, bananas and Maggi now show as out of stock; new carts there can't include them.`);
         break;
       }
       case 'cancel_burst': {
@@ -143,6 +146,7 @@ export class ScenarioEngine {
         for (let i = 0; i < count && candidates.length > 0; i++) {
           picked.push(candidates.splice(Math.floor(this.rng() * candidates.length), 1)[0]);
         }
+        for (const id of picked) orderGen.restock(worlds[0].ordersMap.get(id)!); // items go back on the shelf (once)
         for (const world of worlds) {
           for (const id of picked) world.endOrder(world.ordersMap.get(id)!, 'cancelled', nowSimTime, 'customer cancelled');
         }

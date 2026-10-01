@@ -1,11 +1,12 @@
 import { DarkStore, Rider, Order, Assignment } from '../types';
 import { haversineKm } from '../sim/travel';
-import { forecastQueue, hasStock } from './feasibility';
+import { forecastQueue } from './feasibility';
 import { freeRiders, soloAssignment } from './baseline';
 
 /**
- * Comparison allocator (CONTEXT §5): nearest free rider to the customer; the order is packed at
- * that rider's home store, ignoring stock and the packing queue. A missing item = failed delivery.
+ * Comparison allocator (CONTEXT §5): the nearest free rider to the customer, from any store's pool
+ * (rider pools and the packing queue ignored). The rider rides to the serving store first, so it often
+ * covers a long way before even picking up. Solo trips, FIFO.
  */
 export function runNaiveAllocation(
   pendingOrders: Order[],
@@ -22,25 +23,19 @@ export function runNaiveAllocation(
 
   for (const order of sortedOrders) {
     if (available.length === 0) break;
+    const store = stores.find(s => s.id === order.servingStoreId);
+    if (!store || store.offline) continue;
 
     let idx = -1;
     let minDist = Infinity;
     available.forEach((r, i) => {
       const d = haversineKm(r.loc, order.loc);
-      if (d < minDist || (d === minDist && r.id < available[idx].id)) {
+      if (d < minDist || (d === minDist && idx !== -1 && r.id < available[idx].id)) {
         minDist = d;
         idx = i;
       }
     });
-    const rider = available[idx];
-    const store = stores.find(s => s.id === rider.homeStoreId)!;
-
-    if (store.offline || !hasStock(store, order)) {
-      order.status = 'failed';
-      order.failReason = store.offline ? `${store.name} is offline` : `stock-out at ${store.name}`;
-      continue; // rider stays free
-    }
-    available.splice(idx, 1);
+    const rider = available.splice(idx, 1)[0];
 
     const extra = extraQueued.get(store.id) ?? 0;
     const readyAt = forecastQueue(store, orders, nowSimTime).nextFinishAt(extra);
@@ -48,7 +43,7 @@ export function runNaiveAllocation(
 
     assignments.push(
       soloAssignment(order, rider, store, readyAt, nowSimTime, weatherMult,
-        `Naive: nearest free rider (${rider.id}) packs at its home store (${store.name}); stock and queue ignored.`)
+        `Naive: nearest free rider in the city (${rider.id}), pools ignored; rides to ${store.name} first.`)
     );
   }
 

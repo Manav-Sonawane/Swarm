@@ -1,6 +1,5 @@
 import { DarkStore, Rider, Order, Assignment, DecisionRecord } from '../types';
 import { CONFIG } from '../config';
-import { selectCandidateStores } from '../sim/store-select';
 import { haversineKm } from '../sim/travel';
 import { canServe, forecastQueue, planTrip } from './feasibility';
 
@@ -68,7 +67,7 @@ export function soloAssignment(
   };
 }
 
-/** Greedy baseline: FIFO, nearest stocked store in the geofence + nearest free rider, solo trips. */
+/** Greedy baseline: FIFO, the customer's serving store + that store's nearest free rider, solo trips. */
 export function runBaselineAllocation(
   pendingOrders: Order[],
   riders: Rider[],
@@ -85,26 +84,20 @@ export function runBaselineAllocation(
   for (const order of sortedOrders) {
     if (available.length === 0) break;
 
-    // Nearest stocked store (in the geofence) that has a free rider in its own pool
-    const cands = selectCandidateStores(order, stores, orders, nowSimTime, weatherMult, { rank: 'travel', limit: stores.length, extraQueued });
-    let store: DarkStore | null = null;
+    // The store is fixed (nearest online dark store). Its own riders serve it; if all are busy, the order waits.
+    const store = stores.find(s => s.id === order.servingStoreId);
+    if (!store || store.offline) continue;
     let idx = -1;
-    for (const cs of cands) {
-      let minDist = Infinity;
-      available.forEach((r, i) => {
-        if (!canServe(r, cs.store, stores)) return;
-        const d = haversineKm(r.loc, cs.store.loc);
-        if (d < minDist || (d === minDist && r.id < available[idx].id)) {
-          minDist = d;
-          idx = i;
-        }
-      });
-      if (idx !== -1) {
-        store = cs.store;
-        break;
+    let minDist = Infinity;
+    available.forEach((r, i) => {
+      if (!canServe(r, store)) return;
+      const d = haversineKm(r.loc, store.loc);
+      if (d < minDist || (d === minDist && idx !== -1 && r.id < available[idx].id)) {
+        minDist = d;
+        idx = i;
       }
-    }
-    if (!store) continue; // every nearby pool is busy: wait for a rider
+    });
+    if (idx === -1) continue;
     const rider = available.splice(idx, 1)[0];
 
     const extra = extraQueued.get(store.id) ?? 0;
@@ -113,7 +106,7 @@ export function runBaselineAllocation(
 
     assignments.push(
       soloAssignment(order, rider, store, readyAt, nowSimTime, weatherMult,
-        `Greedy Baseline: nearest stocked store with a free rider (${store.name}) + its nearest free rider (${rider.id}), solo trip.`)
+        `Greedy Baseline: serving store ${store.name} + its nearest free rider (${rider.id}), solo trip.`)
     );
   }
 

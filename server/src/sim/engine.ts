@@ -102,7 +102,7 @@ export class SimEngine {
       events.push({ simTime: now, world: 'all', kind: 'ORDERS_PLACED', message: `📦 ${newOrders.length} new customer order(s) placed across dark stores.` });
       for (const o of newOrders) {
         if (o.status !== 'rejected') continue;
-        events.push({ simTime: now, world: 'all', kind: 'ORDER_REJECTED', message: `🚫 ${o.id} rejected: no store within ${CONFIG.GEOFENCE_KM} km has every item in stock.` });
+        events.push({ simTime: now, world: 'all', kind: 'ORDER_REJECTED', message: `🚫 ${o.id} rejected: outside the service area (no dark store within ${CONFIG.GEOFENCE_KM} km).` });
       }
     }
 
