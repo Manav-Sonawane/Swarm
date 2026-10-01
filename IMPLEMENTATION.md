@@ -270,16 +270,18 @@ The prototype import already covers the old "foundation" and "moving riders" pha
 
 **Checkpoint 3 (4h):** **CRITICAL QUALITY GATE.** Normal + monsoon: Swarm beats **both** baselines on on-time % and worst-case lateness; max decision time < 200 ms. If not, A tunes `config.ts` before moving on. **Do NOT proceed without this.**
 
-> **Result (2026-10-01):** ✅ passed on the average of seeds 1–8 (`ORDERS_PER_HOUR` 300, `MAX_HOLD` 0): on-time Baseline → Swarm 66.2 → **72.8%** normal, 48.6 → **52.1%** monsoon (Swarm ahead on 8/8 seeds each); P90 lateness 500 → 304 s and 631 → 544 s; max lateness 1331 → 1170 s and 1596 → 1463 s; Swarm decision max ≈ 11–13 ms. Naive is far behind (60.5% / 46.0%). **Seed 42 is the exception** (Swarm loses the monsoon 51.0 vs 53.8% and max lateness); seed 4 is a representative demo seed. Re-run: `cd server && npm run bench -- 60 "20:monsoon" <seed>`.
+> **Result (2026-10-01):** ✅ passed on the average of seeds 1–8 (`ORDERS_PER_HOUR` 300, `MAX_HOLD` 0): on-time Baseline → Swarm 66.2 → **72.8%** normal, 48.6 → **52.1%** monsoon (Swarm ahead on 8/8 seeds each); P90 lateness 500 → 304 s and 631 → 544 s; max lateness 1331 → 1170 s and 1596 → 1463 s; Swarm decision max ≈ 11–13 ms. Naive is far behind (60.5% / 46.0%). Seed 42 was the exception at that point (Swarm lost the monsoon 51.0 vs 53.8%). Re-run: `cd server && npm run bench -- 60 "20:monsoon" <seed>`.
+
+> **Tuning round (2026-10-01, later) — Swarm stats boost.** Found with a 12-core in-process sweep (16 train seeds × 5 scenarios per config), then validated on 40 held-out seeds (101–140). Held-out on-time Baseline vs Swarm, average of normal / monsoon / surge / store-offline / rider-offline: **57.2 vs 63.0% before → 57.2 vs 69.7% after**; Swarm wins 200/200 runs (was 197/200); P90 lateness (Baseline → Swarm before → Swarm after) 640 → 480 → **376 s**, max lateness 1434 → 1378 → **1261 s**. Gains hold at finer ticks (dt 10 s: 60.9 → 66.5%; dt 3 s: 69.6 → 75.1%) and over 120 min (34.0 → 45.3%). Seed 42 now: normal **91.3 vs 80.2%**, monsoon **58.5 vs 53.8%**, full 45-min demo sequence **65.6 vs 60.6%**. What drove it: (1) **rider-time cost** `W_RIDE` (+3.5 pts, the big one), (2) tighter feasibility pad 1.05 (+1.2), (3) rider pooling + resting at the nearest store (+0.8), (4) savable-first triage (+0.3), (5) fairness term (+0.2, fairness 0.89 → 0.85). **Tried and rejected:** ready-rider reserve for express orders (every variant worse), alternative assignment orders (EDF / FIFO / regret: worse), batch-partner holds and CAPACITY 4–5 (worse or noise), rebalance timing/threshold knobs (no effect), a heavier rider-time weight on unsavable orders (+1.5 pts on-time but +25% max lateness, a trade against the worst-off customers). **Ablation:** letting Baseline pool riders too makes it *worse* (57.8 → 52.2%), so pooling is not what carries the result; the cost-aware assignment is.
 
 ---
 
 ### **Phase 4: Polish (4–5h)**
 
 **Person A:**
-- [ ] Tune constants from Checkpoint 3; run all scenarios on seed 42 in sequence
-- [ ] Stretch: `packing.ts` (slack + zone order), demand forecasting, fatigue routing
-- [ ] `BUGS.md` P2; `/api/export` with all three worlds
+- [x] Tune constants from Checkpoint 3; run all scenarios on seed 42 in sequence (monsoon → store offline → rider offline → surge → cancel → stock-out → clear in 45 sim-min: no crash, no stuck orders, reproducible; Swarm 62.8% vs Baseline 60.6% on time, max lateness 473 vs 503 s)
+- [x] Stretch: `packing.ts` (slack + zone order), demand forecasting, fatigue routing. Each measured over 8 seeds; see CONTEXT §6 "Stretch" for what each one does and doesn't buy
+- [x] `BUGS.md` P2; `/api/export` with all three worlds
 
 **Person B:**
 - [x] `ScenarioBar.tsx` final buttons + "clear" (Monsoon, IPL Spike, Store Offline, Riders Offline, Stockout, Cancel Burst, Clear All)

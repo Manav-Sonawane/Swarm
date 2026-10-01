@@ -39,6 +39,7 @@ function buildPayload(): TickPayload {
       swarm: worlds.swarm.getSnapshot(now),
       naive: worlds.naive.getSnapshot(now, true), // full 3rd deliverable approach: riders, orders, stores, metrics
     },
+    forecast: engine.forecast(),
   };
 }
 

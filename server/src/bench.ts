@@ -51,7 +51,7 @@ const rows: [string, keyof Metrics][] = [
   ['on-time %', 'onTimeRate'], ['p90 lateness s', 'p90LatenessSec'], ['max lateness s', 'maxLatenessSec'],
   ['delivered', 'delivered'], ['failed', 'ordersFailed'], ['rejected', 'ordersRejected'], ['late now', 'lateNow'],
   ['avg delivery s', 'avgDeliverySec'], ['p90 delivery s', 'p90DeliverySec'], ['km / order', 'kmPerOrder'],
-  ['orders / trip', 'ordersPerTrip'], ['utilization %', 'utilization'], ['queue depth', 'packingQueueDepth'],
+  ['orders / trip', 'ordersPerTrip'], ['utilization %', 'utilization'], ['fairness std', 'fairnessStdDev'], ['queue depth', 'packingQueueDepth'],
   ['reassignments', 'reassignments'], ['decision ms avg', 'decisionMsAvg'], ['decision ms max', 'decisionMsMax'],
 ];
 console.log('metric'.padEnd(18) + ['naive', 'baseline', 'swarm'].map(n => n.padStart(10)).join(''));

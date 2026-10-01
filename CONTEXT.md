@@ -39,7 +39,7 @@
 **Multi-store difference:**
 - Not one store serving everyone
 - 15 dark stores spread across Mumbai, ~2.5 km apart (nearest-neighbour 2.2–3.6 km, avg ~2.6 km)
-- Each store has its own rider pool (6 riders per store, ~90 total)
+- Each store has its own rider pool (6 riders per store, ~90 total). The comparison worlds keep strict pools; **Swarm may pool**: a rider can pick up at any online store within `SWARM_BORROW_KM` (3.5 km) of its home store, and rests at the nearest such store between trips
 - When a customer orders, the system picks the **nearest viable store + most available rider**
 - If the nearest store is overloaded, send to the next-nearest
 - If all stores would miss the promise, extend the window upfront
@@ -169,15 +169,15 @@ ETA = packing delay       (orders ahead in queue / packing slots × pack time + 
     + delivery travel     (store → drops in sequence, up to this order)
     + expected disruption (traffic × weather multipliers, §3)
 ```
-**Feasibility uses a risk-padded ETA:** travel legs × `ETA_RISK_PAD` (1.15 ≈ 85th percentile). Riders still move at the expected speed; the pad only makes promises safer. Packing delay counts as much as distance: a store 500 m away with a 6-min queue loses to one 2 km away that can dispatch now.
+**Feasibility uses a risk-padded ETA:** travel legs × `ETA_RISK_PAD` (1.05). Riders still move at the expected speed; the pad is a small safety margin. (It was 1.15; the simulator has no random travel noise, so a larger pad only shrank the feasible set and cost ~2 pts of on-time. New orders are *classified* with a separate fixed `CLASSIFY_PAD` of 1.15 so every world gets the same promise.) Packing delay counts as much as distance: a store 500 m away with a 6-min queue loses to one 2 km away that can dispatch now.
 
 ### Steps
 1. **Candidate stores:** within the 3 km geofence and holding stock for every item. Keep the best `CANDIDATE_STORES` (3) by packing delay + travel.
-2. **Candidate riders:** not offline, below capacity, not yet departed. Any orders they already hold must be from the same store.
+2. **Candidate riders:** not offline, below capacity, not yet departed, and allowed to serve that store (home store, or within the pooling radius). Any orders they already hold must be from the same store.
 3. **Insertion:** for each (store, rider) pair, insert the order into the rider's trip and try every drop sequence (≤4 drops → ≤24 permutations).
 4. **Hard deadline filter:** discard any option where **any** order on the trip, new or existing, misses its promise under the padded ETA. Deadlines are constraints, not score weights; otherwise a cheap but already-late option can win.
-5. **Score the feasible options:** `cost = insertion seconds + W_LOAD × rider load − batching saving`; ties go to the option with more minimum slack. A batch is only possible here if every affected order stays feasible.
-6. **Assignment order:** the most urgent orders go first, and among those, the highest *regret* (2nd-best cost − best cost), so scarce riders go to orders with the fewest alternatives. Rider state is updated after each assignment before the next order is evaluated.
+5. **Score the feasible options:** `cost = customer wait + delay imposed on orders already on the trip + W_LOAD × load + W_FAIR × (deliveries above the fleet average) + W_RIDE × rider time consumed`; ties go to the option with more minimum slack. "Rider time" is the marginal ride legs plus the leg back to the store: riders, not packing, are the bottleneck under load, so batching and nearby riders are preferred. A batch is only possible here if every affected order stays feasible.
+6. **Assignment order (triage):** orders that can still be on time go first, most urgent first and then highest *regret* (2nd-best cost − best cost), so scarce riders go to orders with the fewest alternatives; orders that cannot be saved get the leftover riders. Rider state is updated after each assignment before the next order is evaluated.
 7. **No feasible option:**
    - New order → the promise is extended upfront (§4, USP 0).
    - Already-promised order → assign the option that minimizes the worst lateness, and flag it **at-risk**.
@@ -234,9 +234,10 @@ All three get the **same promise** per order by default (classified once on the 
 - Decision time per allocator call shown live (ms)
 - Reliability first: on-time % and worst-case lateness lead the dashboard, average speed comes after
 
-### **Stretch (cut first if behind)**
-- **Demand forecasting:** if the last 5 minutes had 3× the normal order rate, expect the same; hold for batches more readily
-- **Rider fatigue routing:** after 7+ deliveries in 2 hours, prefer shorter trips; fairness std-dev already tracked
+### **Stretch (implemented; measured over seeds 1–8)**
+- **Packing queue order** (`packing.ts`, `SMART_PACKING`, on): Swarm stores pack savable trips first (tightest slack first) and keep a trip's orders together; already-late trips go after. Small but consistent: surge on-time 43.1 → 43.8%, P90 lateness slightly lower everywhere.
+- **Demand forecasting** (`SURGE_FORECAST`, on): 5-min moving average of the order rate; at ≥2× normal it raises a `FORECAST_SURGE` alert and sets `forecast.surge` in the tick payload. The optional surge *policy* (`SURGE_MODE`: hold 60 s for batch partners, 4 orders per trip) moved on-time by <0.5 pt and made tail lateness slightly worse, so it is off by default: under a surge riders, not batch size, are the bottleneck.
+- **Rider fatigue routing** (`W_FATIGUE`, on): riders with 7+ deliveries in the last 2 hours pay extra for long trips. Riders start with 0–5 deliveries of shift history (same in every world). At the calibrated load riders make 2–3 deliveries/hour, so it rarely fires: a safety valve, not a measurable gain.
 
 ---
 
@@ -373,7 +374,9 @@ On-time % and lateness are computed over every **decided** order: delivered, fai
 All in `config.ts`:
 - `STORES` (locations, inventory)
 - `RIDERS_PER_STORE` (6)
-- `RIDER_BORROW_KM` (0 = riders pick up only at their home store)
+- `RIDER_BORROW_KM` (0 = comparison worlds: riders pick up only at their home store)
+- `SWARM_BORROW_KM` (3.5) / `SWARM_REPOSITION` (true) — Swarm-only rider pooling
+- `W_RIDE` (0.75) / `W_FAIR` (600) / `SAVABLE_FIRST` (true) — cost terms and triage, see §5
 - `ORDERS_PER_HOUR` (300; spike = 3×. Calibrated so Baseline isn't saturated: ~66–80% on time)
 - `PACK_TIME_SEC` (120)
 - `CAPACITY_PER_TRIP` (3–4 orders)
@@ -385,9 +388,11 @@ All in `config.ts`:
 - `REASSIGN_MIN_GAIN_SEC` (60)
 - `HOLD_SLACK` (240 sec) / `MAX_HOLD` (0 sec: batch-partner holds disabled after Checkpoint 3 tuning; at this order density they cost more than they saved)
 - `REBALANCE_MAX_ORDERS` (40)
+- `SMART_PACKING` (true) / `SURGE_FORECAST` (true) / `SURGE_MODE` (false) / `SURGE_RATIO` (2) / `SURGE_WINDOW_SEC` (300)
+- `FATIGUE_DELIVERIES` (7) / `FATIGUE_WINDOW_SEC` (7200) / `W_FATIGUE` (0.5)
 - `RIDER_CANDIDATES_PER_STORE` (10)
 - `DEPART_SLACK` (120 sec, measured against projected drop ETA)
-- `ETA_RISK_PAD` (1.15)
+- `ETA_RISK_PAD` (1.05) / `CLASSIFY_PAD` (1.15)
 - `DECISION_BUDGET_MS` (200)
 - `TRAFFIC_MULTIPLIER_PEAK` (1.3)
 - `TRAFFIC_MULTIPLIER_MONSOON` (1.5)

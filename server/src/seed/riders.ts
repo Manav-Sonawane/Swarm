@@ -27,6 +27,7 @@ export function generateSeedRiders(stores: { id: string; loc: { lat: number; lng
           delivered: 0,
           activeSec: 0,
           km: 0,
+          deliveryTimes: [],
         },
       });
     }

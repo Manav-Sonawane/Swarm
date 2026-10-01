@@ -4,7 +4,8 @@ import { generateSeedRiders } from '../seed/riders';
 import { routeDistanceKm, getTrafficMultiplier, travelTimeSec, haversineKm } from './travel';
 import { MetricsEngine } from '../metrics';
 import { CONFIG } from '../config';
-import { DropSpec, QueueForecast, forecastQueue, hasStock, planTrip } from '../alloc/feasibility';
+import { DropSpec, QueueForecast, canServe, forecastQueue, hasStock, planTrip } from '../alloc/feasibility';
+import { orderPackingQueue } from '../alloc/packing';
 
 const TERMINAL = new Set(['delivered', 'cancelled', 'failed', 'rejected']);
 export const isTerminal = (o: Order) => TERMINAL.has(o.status);
@@ -15,6 +16,20 @@ export const fmtDur = (sec: number) => {
   return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
 };
 
+/**
+ * Riders at the 19:00 evening peak have usually been working for hours. Gives each rider a fixed
+ * (seed-independent, same in every world) number of 0–5 deliveries spread over the previous
+ * FATIGUE_WINDOW_SEC, so fatigue routing is meaningful within a short demo. Only the fatigue window
+ * uses these; delivery counts and fairness cover the simulated run only.
+ */
+function withShiftHistory(riders: Rider[], startSimTime: number): Rider[] {
+  riders.forEach((r, i) => {
+    const prior = (i * 5 + 3) % 6;
+    r.stats.deliveryTimes = Array.from({ length: prior }, (_, k) => startSimTime - ((k + 1) * CONFIG.FATIGUE_WINDOW_SEC) / (prior + 1));
+  });
+  return riders;
+}
+
 export class World {
   public name: WorldName;
   public stores: DarkStore[];
@@ -23,22 +38,24 @@ export class World {
   public metricsEngine: MetricsEngine;
   private startSimTime: number;
   private events: EventPayload[] = []; // per-order events since the last drainEvents()
+  public batchHoldSec: number = CONFIG.MAX_HOLD; // raised by the demand forecaster in surge mode
 
   constructor(name: WorldName, startSimTime: number) {
     this.name = name;
     this.startSimTime = startSimTime;
     this.stores = generateSeedStores();
-    this.riders = generateSeedRiders(this.stores);
+    this.riders = withShiftHistory(generateSeedRiders(this.stores), startSimTime);
     this.metricsEngine = new MetricsEngine();
   }
 
   public reset(startSimTime: number): void {
     this.startSimTime = startSimTime;
     this.stores = generateSeedStores();
-    this.riders = generateSeedRiders(this.stores);
+    this.riders = withShiftHistory(generateSeedRiders(this.stores), startSimTime);
     this.ordersMap.clear();
     this.metricsEngine.reset();
     this.events = [];
+    this.batchHoldSec = CONFIG.MAX_HOLD;
   }
 
   /** Returns and clears the per-order events (delivered, delivered late, failed) collected so far. */
@@ -226,6 +243,23 @@ export class World {
     return restored;
   }
 
+  /** Where an idle rider waits: its home store, or (Swarm pooling) the nearest store it may serve. */
+  private restStore(rider: Rider): DarkStore | undefined {
+    const home = this.stores.find(s => s.id === rider.homeStoreId);
+    if (this.name !== 'swarm' || CONFIG.SWARM_BORROW_KM <= 0 || !CONFIG.SWARM_REPOSITION) return home;
+    let best = home;
+    let bestD = home ? haversineKm(rider.loc, home.loc) : Infinity;
+    for (const s of this.stores) {
+      if (!canServe(rider, s, this.stores, CONFIG.SWARM_BORROW_KM)) continue;
+      const d = haversineKm(rider.loc, s.loc);
+      if (d < bestD) {
+        best = s;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
   public step(dtSimSec: number, nowSimTime: number, weatherMult: number = 1.0): void {
     if (dtSimSec <= 0) return;
 
@@ -240,6 +274,7 @@ export class World {
         }
         return true;
       });
+      if (this.name === 'swarm' && CONFIG.SMART_PACKING) orderPackingQueue(store, this.ordersMap, this.riders, nowSimTime);
       let packing = store.packQueue.filter(id => this.ordersMap.get(id)!.status === 'packing').length;
       for (const id of store.packQueue) {
         if (packing >= store.packingSlots) break;
@@ -260,7 +295,7 @@ export class World {
       if (rider.route.length === 0) {
         if (rider.status !== 'idle' && rider.status !== 'returning') rider.status = 'idle';
 
-        const homeStore = this.stores.find(s => s.id === rider.homeStoreId);
+        const homeStore = this.restStore(rider);
         if (homeStore && haversineKm(rider.loc, homeStore.loc) > 0.3) {
           rider.status = 'returning';
           const distKm = routeDistanceKm(rider.loc, homeStore.loc);
@@ -304,6 +339,7 @@ export class World {
             order.isLate = nowSimTime > order.promisedBy;
             order.projectedEta = nowSimTime;
             rider.stats.delivered += 1;
+            rider.stats.deliveryTimes = [...rider.stats.deliveryTimes.filter(t => t > nowSimTime - CONFIG.FATIGUE_WINDOW_SEC), nowSimTime];
             const diff = order.promisedBy - nowSimTime;
             this.events.push(
               order.isLate
@@ -347,7 +383,7 @@ export class World {
 
     // Waiting for a batch partner has an opportunity cost: at most MAX_HOLD once everything is packed
     rider.readyAtStoreSince ??= now;
-    if (now - rider.readyAtStoreSince >= CONFIG.MAX_HOLD) return true;
+    if (now - rider.readyAtStoreSince >= this.batchHoldSec) return true;
 
     // Risk-padded like every other feasibility check, so a held trip keeps a buffer against disruptions
     const drops = this.dropsOf(rider);

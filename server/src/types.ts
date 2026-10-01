@@ -37,6 +37,7 @@ export interface Rider {
     delivered: number;
     activeSec: number;
     km: number;
+    deliveryTimes: number[]; // sim-times of recent deliveries (fatigue window)
   };
 }
 
@@ -69,6 +70,7 @@ export interface CandidateScore {
   feasible: boolean; // every order on the trip meets its promise under the padded ETA
   maxLatenessSec: number; // worst padded lateness across the trip (0 if feasible)
   minSlackSec: number; // smallest padded slack across the trip
+  riderSec?: number; // marginal rider-busy time of this assignment (ride legs + return to the store)
   tripStops?: Stop[];
 }
 
@@ -198,6 +200,7 @@ export interface TickPayload {
     swarm: WorldSnapshot;
     naive: WorldSnapshot; // metrics only: stores/riders/orders are []
   };
+  forecast: { ordersPerHourLast5Min: number; surge: boolean }; // demand forecaster (Swarm surge mode)
 }
 
 export interface EventPayload {
